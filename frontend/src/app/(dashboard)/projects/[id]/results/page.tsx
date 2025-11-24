@@ -137,13 +137,22 @@ export default function ResultsPage() {
               Review extracted data and export to CSV
             </p>
           </div>
-          {!isLoading && results.length > 0 && (
-            <ExportModal
-              results={results}
-              variables={variables}
-              documentNames={documentNames}
-            />
-          )}
+          <div className="flex gap-2">
+            {!isLoading && results.length > 0 && (
+              <ExportModal
+                results={results}
+                variables={variables}
+                documentNames={documentNames}
+              />
+            )}
+            <Button
+              variant="outline"
+              onClick={() => router.push('/projects')}
+              aria-label="Save and return to dashboard"
+            >
+              Save & Exit
+            </Button>
+          </div>
         </div>
 
         <WorkflowProgress currentStep={5} />

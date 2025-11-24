@@ -43,14 +43,17 @@ export default function ProjectsPage() {
       setIsLoading(true);
       try {
         await new Promise((resolve) => setTimeout(resolve, 500));
-        setProjects([]);
+        // Projects are already loaded from localStorage via Zustand persist
+        // No need to call setProjects([]) - that would clear them!
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadProjects();
-  }, [setProjects]);
+    if (mounted) {
+      loadProjects();
+    }
+  }, [mounted]);
 
   if (!mounted) {
     return null;

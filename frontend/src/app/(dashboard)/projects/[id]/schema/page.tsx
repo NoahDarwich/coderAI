@@ -57,6 +57,13 @@ export default function SchemaPage() {
               Define the variables you want to extract from your documents
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/projects')}
+            aria-label="Save and return to dashboard"
+          >
+            Save & Exit
+          </Button>
         </div>
 
         <WorkflowProgress currentStep={2} />

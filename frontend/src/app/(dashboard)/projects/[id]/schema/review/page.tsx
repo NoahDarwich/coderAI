@@ -61,6 +61,13 @@ export default function SchemaReviewPage() {
               Review and confirm your extraction schema before processing
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/projects')}
+            aria-label="Save and return to dashboard"
+          >
+            Save & Exit
+          </Button>
         </div>
 
         <WorkflowProgress currentStep={3} />
