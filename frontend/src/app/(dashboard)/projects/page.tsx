@@ -3,10 +3,20 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, FolderOpen, FileText, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, FolderOpen, FileText, Calendar, TrendingUp, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useProjectStore } from '@/store/projectStore';
 import { Project } from '@/types';
 import { formatRelativeTime } from '@/lib/utils';
@@ -30,9 +40,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const { projects, setProjects } = useProjectStore();
+  const { projects, removeProject } = useProjectStore();
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -61,6 +73,26 @@ export default function ProjectsPage() {
 
   const handleCreateProject = () => {
     router.push('/projects/new');
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, project: Project) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation();
+    setProjectToDelete(project);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (projectToDelete) {
+      removeProject(projectToDelete.id);
+      setDeleteDialogOpen(false);
+      setProjectToDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+    setProjectToDelete(null);
   };
 
   return (
@@ -122,21 +154,22 @@ export default function ProjectsPage() {
       {!isLoading && projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project: Project) => (
-            <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardHeader>
-                  <div className="flex items-start justify-between mb-2">
-                    <CardTitle className="text-xl">{project.name}</CardTitle>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'text-xs',
-                        STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-800'
-                      )}
-                    >
-                      {STATUS_LABELS[project.status] || project.status}
-                    </Badge>
-                  </div>
+            <div key={project.id} className="relative group">
+              <Link href={`/projects/${project.id}`}>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      <CardTitle className="text-xl pr-8">{project.name}</CardTitle>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-xs',
+                          STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-800'
+                        )}
+                      >
+                        {STATUS_LABELS[project.status] || project.status}
+                      </Badge>
+                    </div>
                   <CardDescription>
                     {project.scale === 'small' ? 'Small Project' : 'Large Project'} •
                     Created {formatRelativeTime(project.createdAt)}
@@ -164,9 +197,43 @@ export default function ProjectsPage() {
                 </CardContent>
               </Card>
             </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white hover:bg-red-50 hover:text-red-600 z-10"
+              onClick={(e) => handleDeleteClick(e, project)}
+              aria-label={`Delete project ${project.name}`}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold">{projectToDelete?.name}</span>?
+              This action cannot be undone. All project data, including schema definitions and extraction results, will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDelete}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete Project
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
