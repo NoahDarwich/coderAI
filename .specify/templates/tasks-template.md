@@ -12,6 +12,8 @@ description: "Task list template for feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
+**Workflow Mapping**: Each phase should map to user workflow steps from USER_WORKFLOW.md (Steps 1-5) to ensure features align with the canonical user journey.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -77,6 +79,8 @@ Examples of foundational tasks (adjust based on your project):
 
 **Goal**: [Brief description of what this story delivers]
 
+**Workflow Step**: [Which step from USER_WORKFLOW.md: Step 1, 2, 3, 4, or 5]
+
 **Independent Test**: [How to verify this story works on its own]
 
 ### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
@@ -103,6 +107,8 @@ Examples of foundational tasks (adjust based on your project):
 
 **Goal**: [Brief description of what this story delivers]
 
+**Workflow Step**: [Which step from USER_WORKFLOW.md: Step 1, 2, 3, 4, or 5]
+
 **Independent Test**: [How to verify this story works on its own]
 
 ### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
@@ -124,6 +130,8 @@ Examples of foundational tasks (adjust based on your project):
 ## Phase 5: User Story 3 - [Title] (Priority: P3)
 
 **Goal**: [Brief description of what this story delivers]
+
+**Workflow Step**: [Which step from USER_WORKFLOW.md: Step 1, 2, 3, 4, or 5]
 
 **Independent Test**: [How to verify this story works on its own]
 

@@ -1,144 +1,244 @@
 /**
- * Results Page
- * View and manage extraction results with filtering and export
+ * Results Page - Step 5: View and export extraction results
  */
 
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useExtractionResults, useFlagResult, useBulkFlagResults } from '@/lib/api/extraction';
-import { ExtractionPreview } from '@/components/results/ExtractionPreview';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Table2, Download, ArrowRight } from 'lucide-react';
-import { toast } from 'sonner';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ResultsTable } from '@/components/workflow/step5/ResultsTable';
+import { ExportModal } from '@/components/workflow/step5/ExportModal';
+import { ConfidenceFilter } from '@/components/workflow/step5/ConfidenceFilter';
+import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
+import { useSchemaWizardStore } from '@/store/schemaWizardStore';
+import { ExtractionResult } from '@/types';
+import { generateId } from '@/lib/utils';
+import { mockDocuments } from '@/mocks/mockDocuments';
 
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const { variables } = useSchemaWizardStore();
 
-  // Fetch results
-  const { data: results = [], isLoading } = useExtractionResults(projectId);
+  const [mounted, setMounted] = useState(false);
+  const [results, setResults] = useState<ExtractionResult[]>([]);
+  const [filteredResults, setFilteredResults] = useState<ExtractionResult[]>([]);
+  const [documentNames, setDocumentNames] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0);
 
-  // Flag mutations
-  const flagMutation = useFlagResult(projectId);
-  const bulkFlagMutation = useBulkFlagResults(projectId);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const handleFlagResult = async (resultId: string, flagged: boolean) => {
-    try {
-      await flagMutation.mutateAsync({ resultId, flagged });
-      toast.success(flagged ? 'Result flagged for review' : 'Result unflagged');
-    } catch (error) {
-      toast.error('Failed to update flag status');
+  // Filter results by confidence threshold
+  useEffect(() => {
+    if (results.length === 0) {
+      setFilteredResults([]);
+      return;
     }
-  };
 
-  const handleBulkFlag = async (resultIds: string[], flagged: boolean) => {
-    try {
-      await bulkFlagMutation.mutateAsync({ resultIds, flagged });
-    } catch (error) {
-      toast.error('Failed to update flag status');
-    }
-  };
+    const filtered = results.filter((result) => {
+      // Check if all values meet the threshold
+      return result.values.every((value) => value.confidence >= confidenceThreshold);
+    });
 
-  const hasResults = results.length > 0;
+    setFilteredResults(filtered);
+  }, [results, confidenceThreshold]);
+
+  // Load results
+  useEffect(() => {
+    if (!mounted) return;
+
+    const loadResults = async () => {
+      setIsLoading(true);
+      try {
+        // Simulate API call
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Get documents for this project
+        const projectDocs = mockDocuments.filter((doc) => doc.projectId === projectId);
+
+        // Generate mock results
+        const mockResults: ExtractionResult[] = projectDocs.map((doc) => ({
+          id: generateId(),
+          projectId,
+          documentId: doc.id,
+          values: variables.map((variable) => {
+            // Generate mock extracted values
+            let value: string | number | boolean | null = null;
+            let confidence = Math.floor(Math.random() * 30) + 70; // 70-100
+
+            if (variable.type === 'text') {
+              value = `Sample ${variable.name.toLowerCase()} from ${doc.fileName}`;
+            } else if (variable.type === 'number') {
+              value = Math.floor(Math.random() * 1000) + 1;
+            } else if (variable.type === 'date') {
+              value = '2024-01-15';
+            } else if (variable.type === 'category' && variable.classificationRules) {
+              value = variable.classificationRules[Math.floor(Math.random() * variable.classificationRules.length)];
+            } else if (variable.type === 'boolean') {
+              value = Math.random() > 0.5;
+            }
+
+            return {
+              variableId: variable.id,
+              value,
+              confidence,
+              sourceText: `This is a sample text excerpt from ${doc.fileName} that was used to extract ${variable.name}...`,
+            };
+          }),
+          completedAt: new Date().toISOString(),
+        }));
+
+        setResults(mockResults);
+
+        // Create document name mapping
+        const names: Record<string, string> = {};
+        projectDocs.forEach((doc) => {
+          names[doc.id] = doc.fileName;
+        });
+        setDocumentNames(names);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadResults();
+  }, [projectId, variables, mounted]);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Table2 className="h-6 w-6" />
-            Extraction Results
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            Review extracted data, sort by confidence, and flag items for review
-          </p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Button
+        variant="ghost"
+        onClick={() => router.push(`/projects/${projectId}`)}
+        className="mb-6"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Project
+      </Button>
+
+      <div className="mb-8">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Extraction Results
+            </h1>
+            <p className="text-gray-600">
+              Review extracted data and export to CSV
+            </p>
+          </div>
+          {!isLoading && results.length > 0 && (
+            <ExportModal
+              results={results}
+              variables={variables}
+              documentNames={documentNames}
+            />
+          )}
         </div>
 
-        {hasResults && (
-          <Button
-            onClick={() => router.push(`/projects/${projectId}/export`)}
-          >
-            Export Data
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        )}
+        <WorkflowProgress currentStep={5} />
       </div>
 
-      {/* Results summary */}
-      {hasResults && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg border bg-card">
-            <p className="text-sm text-muted-foreground">Total Results</p>
-            <p className="text-2xl font-bold">{results.length}</p>
+      {/* Success Alert */}
+      {!isLoading && results.length > 0 && (
+        <Alert className="bg-green-50 border-green-200 mb-6">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            <span className="font-medium">Processing complete!</span>
+            {' '}- Successfully extracted {variables.length} variables from {results.length} documents.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Filters and Results */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+        {/* Confidence Filter Sidebar */}
+        {!isLoading && results.length > 0 && (
+          <div className="lg:col-span-1">
+            <ConfidenceFilter
+              value={confidenceThreshold}
+              onChange={setConfidenceThreshold}
+            />
           </div>
-          <div className="p-4 rounded-lg border bg-card">
-            <p className="text-sm text-muted-foreground">Flagged for Review</p>
-            <p className="text-2xl font-bold">
-              {results.filter((r) => r.flagged).length}
-            </p>
-          </div>
-          <div className="p-4 rounded-lg border bg-card">
-            <p className="text-sm text-muted-foreground">Avg. Confidence</p>
-            <p className="text-2xl font-bold">
-              {Math.round(
-                results.reduce((acc, r) => {
-                  const confidences = Object.values(r.data).map(
-                    (d) => d.confidence
-                  );
-                  const avg =
-                    confidences.reduce((a, b) => a + b, 0) / confidences.length;
-                  return acc + avg;
-                }, 0) / results.length
+        )}
+
+        {/* Results Table */}
+        <div className={!isLoading && results.length > 0 ? "lg:col-span-3" : "lg:col-span-4"}>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Extracted Data</CardTitle>
+                  <CardDescription>
+                    Search, sort, and review your extraction results
+                  </CardDescription>
+                </div>
+                {!isLoading && filteredResults.length < results.length && (
+                  <div className="text-sm text-gray-600">
+                    Showing {filteredResults.length} of {results.length} results
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-pulse space-y-4 w-full">
+                    <div className="h-10 bg-gray-200 rounded" />
+                    <div className="h-64 bg-gray-200 rounded" />
+                  </div>
+                </div>
+              ) : results.length === 0 ? (
+                <div className="text-center py-12 text-gray-600">
+                  No results available. Please process documents first.
+                </div>
+              ) : filteredResults.length === 0 ? (
+                <div className="text-center py-12 text-gray-600">
+                  No results match the current confidence threshold. Try lowering the filter.
+                </div>
+              ) : (
+                <ResultsTable
+                  results={filteredResults}
+                  variables={variables}
+                  documentNames={documentNames}
+                />
               )}
-              %
-            </p>
-          </div>
+            </CardContent>
+          </Card>
         </div>
-      )}
+      </div>
 
-      {/* Results table */}
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading results...</p>
-          </div>
-        </div>
-      ) : hasResults ? (
-        <ExtractionPreview
-          results={results}
-          onFlagResult={handleFlagResult}
-          onBulkFlag={handleBulkFlag}
-        />
-      ) : (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg">
-          <Table2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No results yet</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Process your documents to see extraction results here
-          </p>
-          <Button
-            onClick={() => router.push(`/projects/${projectId}/process`)}
-          >
-            Start Processing
-          </Button>
-        </div>
-      )}
-
-      {/* Next step CTA */}
-      {hasResults && (
-        <div className="flex justify-end pt-4 border-t">
-          <Button
-            size="lg"
-            onClick={() => router.push(`/projects/${projectId}/export`)}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export Results
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+      {/* Summary Stats */}
+      {!isLoading && results.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>Documents Processed</CardDescription>
+              <CardTitle className="text-2xl">{results.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>Variables Extracted</CardDescription>
+              <CardTitle className="text-2xl">{variables.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>Total Data Points</CardDescription>
+              <CardTitle className="text-2xl">{results.length * variables.length}</CardTitle>
+            </CardHeader>
+          </Card>
         </div>
       )}
     </div>

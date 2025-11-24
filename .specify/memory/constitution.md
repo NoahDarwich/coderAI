@@ -1,29 +1,27 @@
 <!--
 ═══════════════════════════════════════════════════════════════════════
-Sync Impact Report - Constitution v1.1.0
+Sync Impact Report - Constitution v1.2.0
 ═══════════════════════════════════════════════════════════════════════
-Version Change: 1.0.0 → 1.1.0 (MINOR)
-Rationale: Scope reduction to frontend-only development phase
+Version Change: 1.1.0 → 1.2.0 (MINOR)
+Rationale: Addition of User Workflow Principle (new governance principle)
 
 Modified Principles:
-  - I. AI-First Architecture → Deferred to Phase 2 (backend integration)
-  - II. Research-Grade Quality → Adapted for UI/UX focus
-  - III. Pragmatic Development → Updated for frontend-only scope
+  - None (existing principles unchanged)
 
 Added Sections:
-  - Development Phases (Phase 1: Frontend + Mock Data)
-  - Mock Data Strategy
+  - IV. User Workflow Fidelity (new core principle)
+  - User Workflow Reference (complete 5-step workflow)
 
 Removed Sections:
-  - Backend-specific quality standards (deferred)
-  - LLM orchestration requirements (deferred)
+  - None
 
 Templates Requiring Updates:
-  ✅ All templates - No changes needed (phase-based approach)
+  ✅ plan-template.md - Added User Workflow Check to Constitution Check
+  ✅ spec-template.md - Added User Workflow mapping requirement
+  ✅ tasks-template.md - Added User Workflow step mapping to task phases
 
 Follow-up TODOs:
-  - Phase 2: Update constitution for backend integration
-  - Phase 2: Restore AI-First Architecture principle
+  - None (all placeholders resolved)
 ═══════════════════════════════════════════════════════════════════════
 -->
 
@@ -113,6 +111,110 @@ Follow-up TODOs:
 
 **Rationale:** Frontend development is fastest when decoupled from backend. Building the full UI with mocks validates the design before investing in backend work. Feedback on live UI (deployed to Vercel) beats wireframes.
 
+### IV. User Workflow Fidelity
+**Every feature MUST align with the canonical 5-step user workflow defined in USER_WORKFLOW.md.**
+
+- **Workflow Authority:**
+  - USER_WORKFLOW.md is the single source of truth for user journey
+  - All UI/UX decisions MUST reference specific workflow steps
+  - No features outside the workflow in Phase 1
+- **5-Step Workflow Compliance:**
+  1. **Project Setup & Document Input** - Clear scale selection, multiple input methods, visual confirmation
+  2. **Schema Definition (Wizard)** - Structured form-based wizard (NOT chat), step-by-step variable definition
+  3. **Schema Review & Confirmation** - Complete schema preview, edit/delete/reorder, explicit approval
+  4. **Processing** - Sample testing first, then full batch with detailed progress logging
+  5. **Results & Export** - Table view, export options, data summary
+- **Design Principles from Workflow:**
+  - Clarity over cleverness: Users never confused about next step
+  - Progress visibility: Always know where they are in workflow
+  - Reversibility: Can go back and modify earlier decisions
+  - Asynchronous awareness: Clear when processes run in background
+  - Data transparency: Show what's happening with data at each step
+- **Implementation Requirements:**
+  - Each workflow step MUST map to specific pages/components
+  - Navigation between steps MUST be intuitive and obvious
+  - Visual hierarchy guides users through workflow naturally
+  - Error states and loading states for every step
+  - Mobile responsiveness (desktop primary)
+
+**Rationale:** The workflow is the product. Deviating from USER_WORKFLOW.md creates confusion and breaks user mental models. Every feature must serve the workflow, not complicate it.
+
+**Reference:** Complete workflow details in USER_WORKFLOW.md
+
+## User Workflow Reference
+
+### Step 1: Project Setup & Document Input
+**Goal:** User creates project and loads documents
+
+**UI Requirements:**
+- Project scale selector (Small/Experimental vs Large)
+- Cloud connection interface (Google Drive, Dropbox, etc.)
+- Direct file upload (drag-and-drop)
+- Document list/grid view with count
+- Visual confirmation before proceeding
+
+### Step 2: Schema Definition (Wizard-Style)
+**Goal:** User defines extraction schema through structured wizard
+
+**IMPORTANT:** NOT a chat interface - this is a step-by-step form wizard
+
+**UI Requirements:**
+- Variable definition form for each variable:
+  - Variable name input field
+  - Variable type selector (text, number, date, category, boolean)
+  - Extraction instructions text area
+  - Classification rules (if applicable)
+  - AI suggestions based on description
+- Wizard navigation:
+  - "Add Another Variable" button
+  - Progress indicator (number of variables defined)
+  - "Back" and "Next" buttons
+  - Clear visual separation between variables
+  - Edit/delete/reorder capabilities
+
+### Step 3: Schema Review & Confirmation
+**Goal:** User reviews complete schema and approves
+
+**UI Requirements:**
+- Complete schema display as table preview
+- Column headers show variable names
+- Expandable details for types and extraction rules
+- Visual preview of final dataset structure
+- Actions: Edit any variable, delete, reorder (drag-and-drop)
+- Prominent "Confirm and Proceed" button
+
+### Step 4: Processing
+**Goal:** Process documents with testing first, then full batch
+
+**Phase A: Sample Testing**
+- Process sample subset (10-20 documents)
+- Results in table format with schema columns
+- User can flag errors (click cells to flag)
+- Option to refine schema or proceed
+
+**Phase B: Full Processing**
+- Real-time processing log:
+  - Document name and number
+  - Variables being extracted
+  - Errors/warnings
+  - Progress percentage
+- Background processing support
+- Status indicator (Processing, Paused, Complete, Error)
+- Progress bar (overall and per-document)
+- Notification when complete
+
+### Step 5: Results & Export
+**Goal:** User reviews and exports structured data
+
+**UI Requirements:**
+- Table view with schema columns
+- Sort, filter, scroll capabilities
+- Export functionality:
+  - Format selector (CSV, Excel, JSON)
+  - Custom structure options
+  - Download button
+- Data summary statistics (row count, completion %)
+
 ## Development Phases
 
 ### Phase 1: Frontend + Mock Data (Current)
@@ -127,7 +229,7 @@ Follow-up TODOs:
 - Basic documentation (README with setup instructions)
 
 **Success Criteria:**
-- ✅ User can navigate full workflow with mock data
+- ✅ User can navigate full 5-step workflow with mock data
 - ✅ UI is responsive and accessible
 - ✅ Deployed site loads in < 2 seconds
 - ✅ TypeScript has 0 errors (`npm run build` succeeds)
@@ -314,4 +416,4 @@ export const mockApi = {
 - Phase 2 real API MUST conform to same interfaces
 - Version interfaces if API changes
 
-**Version**: 1.1.0 | **Ratified**: 2025-01-19 | **Last Amended**: 2025-01-19
+**Version**: 1.2.0 | **Ratified**: 2025-01-19 | **Last Amended**: 2025-01-23

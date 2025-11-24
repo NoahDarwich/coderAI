@@ -1,9 +1,15 @@
 # Feature Specification: [FEATURE NAME]
 
 **Feature Branch**: `[###-feature-name]`  
-**Created**: [DATE]  
-**Status**: Draft  
+**Created**: [DATE]
+**Status**: Draft
 **Input**: User description: "$ARGUMENTS"
+
+## User Workflow Context
+
+**Primary Workflow Step(s):** [Identify which step(s) from USER_WORKFLOW.md this feature supports: 1, 2, 3, 4, or 5]
+
+**Workflow Alignment:** [Brief explanation of how this feature fits into the 5-step user workflow defined in USER_WORKFLOW.md]
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -26,6 +32,8 @@
 
 **Why this priority**: [Explain the value and why it has this priority level]
 
+**Workflow Step:** [Which step from USER_WORKFLOW.md does this story support?]
+
 **Independent Test**: [Describe how this can be tested independently - e.g., "Can be fully tested by [specific action] and delivers [specific value]"]
 
 **Acceptance Scenarios**:
@@ -41,6 +49,8 @@
 
 **Why this priority**: [Explain the value and why it has this priority level]
 
+**Workflow Step:** [Which step from USER_WORKFLOW.md does this story support?]
+
 **Independent Test**: [Describe how this can be tested independently]
 
 **Acceptance Scenarios**:
@@ -54,6 +64,8 @@
 [Describe this user journey in plain language]
 
 **Why this priority**: [Explain the value and why it has this priority level]
+
+**Workflow Step:** [Which step from USER_WORKFLOW.md does this story support?]
 
 **Independent Test**: [Describe how this can be tested independently]
 

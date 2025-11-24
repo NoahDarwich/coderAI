@@ -1,5 +1,5 @@
 /**
- * Schema Definition Page - Step 2: Define extraction variables through wizard
+ * Schema Review Page - Step 3: Review and confirm extraction schema
  */
 
 'use client';
@@ -8,11 +8,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SchemaWizard } from '@/components/workflow/step2/SchemaWizard';
+import { SchemaReview } from '@/components/workflow/step3/SchemaReview';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { useProjectStore } from '@/store/projectStore';
 
-export default function SchemaPage() {
+export default function SchemaReviewPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -23,13 +23,17 @@ export default function SchemaPage() {
     setMounted(true);
   }, []);
 
-  const handleComplete = () => {
-    // Update project status to review phase
+  const handleConfirm = () => {
+    // Update project status to processing phase
     updateProject(projectId, {
-      status: 'review',
-      schemaComplete: false, // Not complete until reviewed
+      status: 'processing',
+      schemaComplete: true,
     });
-    router.push(`/projects/${projectId}/schema/review`);
+    router.push(`/projects/${projectId}/process`);
+  };
+
+  const handleBackToWizard = () => {
+    router.push(`/projects/${projectId}/schema`);
   };
 
   if (!mounted) {
@@ -37,7 +41,7 @@ export default function SchemaPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Button
         variant="ghost"
         onClick={() => router.push(`/projects/${projectId}`)}
@@ -51,18 +55,22 @@ export default function SchemaPage() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Define Extraction Schema
+              Review Schema
             </h1>
             <p className="text-gray-600">
-              Define the variables you want to extract from your documents
+              Review and confirm your extraction schema before processing
             </p>
           </div>
         </div>
 
-        <WorkflowProgress currentStep={2} />
+        <WorkflowProgress currentStep={3} />
       </div>
 
-      <SchemaWizard projectId={projectId} onComplete={handleComplete} />
+      <SchemaReview
+        projectId={projectId}
+        onConfirm={handleConfirm}
+        onBackToWizard={handleBackToWizard}
+      />
     </div>
   );
 }

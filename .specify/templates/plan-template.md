@@ -31,7 +31,46 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+### Core Principles Compliance
+
+**I. UI-First Design:**
+- [ ] All features align with Phase 1 scope (Frontend + Mock Data)
+- [ ] Mock data strategy defined for this feature
+- [ ] Service layer abstraction identified
+
+**II. User Experience Excellence:**
+- [ ] Accessibility requirements identified (WCAG 2.1 AA)
+- [ ] Error states and loading states planned
+- [ ] Mobile responsiveness considerations documented
+
+**III. Rapid Iteration:**
+- [ ] shadcn/ui components identified for use
+- [ ] Technical debt acceptable for Phase 1 documented
+- [ ] Phase 2 integration points noted
+
+**IV. User Workflow Fidelity:**
+- [ ] Feature maps to specific USER_WORKFLOW.md steps (1-5)
+- [ ] Does NOT introduce features outside the 5-step workflow
+- [ ] Navigation flow aligns with workflow progression
+- [ ] Workflow design principles applied:
+  - Clarity over cleverness
+  - Progress visibility
+  - Reversibility
+  - Asynchronous awareness
+  - Data transparency
+
+### User Workflow Mapping
+
+**Primary Workflow Step(s):** [Specify which step(s) from USER_WORKFLOW.md: 1, 2, 3, 4, or 5]
+
+**Workflow Compliance:**
+- Step 1 (Project Setup & Document Input): [N/A or describe alignment]
+- Step 2 (Schema Definition Wizard): [N/A or describe alignment]
+- Step 3 (Schema Review & Confirmation): [N/A or describe alignment]
+- Step 4 (Processing - Sample & Full): [N/A or describe alignment]
+- Step 5 (Results & Export): [N/A or describe alignment]
+
+**Rationale:** [Explain how this feature serves the user workflow]
 
 ## Project Structure
 
