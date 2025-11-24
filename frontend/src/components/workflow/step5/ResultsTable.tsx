@@ -172,21 +172,22 @@ export function ResultsTable({ results, variables, documentNames }: ResultsTable
       {/* Search */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
           <Input
             placeholder="Search all fields..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             className="pl-10"
+            aria-label="Search extraction results"
           />
         </div>
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600" role="status" aria-live="polite">
           {table.getFilteredRowModel().rows.length} of {flattenedData.length} results
         </div>
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-hidden" role="region" aria-label="Extraction results table">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>

@@ -27,7 +27,7 @@ export function WizardNavigation({
   isLastVariable,
 }: WizardNavigationProps) {
   return (
-    <div className="flex items-center justify-between pt-6 border-t">
+    <nav className="flex items-center justify-between pt-6 border-t" aria-label="Wizard navigation">
       {/* Left side - Previous button */}
       <div>
         {canGoPrevious && onPrevious && (
@@ -37,14 +37,14 @@ export function WizardNavigation({
             onClick={onPrevious}
             aria-label="Go to previous variable"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
             Previous
           </Button>
         )}
       </div>
 
       {/* Center - Progress indicator */}
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-gray-600" role="status" aria-live="polite">
         {totalVariables > 0 ? (
           <span>
             Variable {currentIndex + 1} of {totalVariables}
@@ -55,15 +55,15 @@ export function WizardNavigation({
       </div>
 
       {/* Right side - Next/Add/Finish buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-2" role="group" aria-label="Navigation actions">
         {onAddAnother && (
           <Button
             type="button"
             variant="outline"
             onClick={onAddAnother}
-            aria-label="Add another variable"
+            aria-label="Add another variable to schema"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
             Add Another
           </Button>
         )}
@@ -75,7 +75,7 @@ export function WizardNavigation({
             aria-label="Go to next variable"
           >
             Next
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
           </Button>
         )}
 
@@ -84,13 +84,14 @@ export function WizardNavigation({
             type="button"
             onClick={onFinish}
             disabled={!canGoNext}
-            aria-label="Finish defining variables"
+            aria-label="Finish defining variables and continue to review"
+            aria-disabled={!canGoNext}
           >
             Continue to Review
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
           </Button>
         )}
       </div>
-    </div>
+    </nav>
   );
 }

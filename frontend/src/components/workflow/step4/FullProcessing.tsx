@@ -44,8 +44,9 @@ export function FullProcessing({
                 size="lg"
                 onClick={onStart}
                 disabled={!canStart || isProcessing}
+                aria-label="Start processing all documents with extraction schema"
               >
-                <Play className="w-4 h-4 mr-2" />
+                <Play className="w-4 h-4 mr-2" aria-hidden="true" />
                 Start Full Processing
               </Button>
             </div>
@@ -54,20 +55,20 @@ export function FullProcessing({
           {job && (
             <>
               {/* Progress Bar */}
-              <div className="space-y-2">
+              <div className="space-y-2" role="region" aria-label="Processing progress">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">
+                  <span className="text-gray-600" aria-live="polite">
                     Processing {job.processedDocuments} of {job.totalDocuments} documents
                   </span>
-                  <span className="font-medium">{job.progress}%</span>
+                  <span className="font-medium" aria-label={`${job.progress} percent complete`}>{job.progress}%</span>
                 </div>
-                <Progress value={job.progress} className="h-2" />
+                <Progress value={job.progress} className="h-2" aria-label="Processing progress bar" />
               </div>
 
               {/* Status Message */}
               {isComplete && (
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-4 rounded-lg">
-                  <CheckCircle2 className="w-5 h-5" />
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-4 rounded-lg" role="alert" aria-live="polite">
+                  <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
                   <div>
                     <p className="font-medium">Processing Complete!</p>
                     <p className="text-sm">

@@ -83,11 +83,11 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
   }
 
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div className="border rounded-lg overflow-hidden" role="region" aria-label="Schema variables table">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-12"></TableHead>
+            <TableHead className="w-12" aria-label="Drag handle column"></TableHead>
             <TableHead className="w-12">#</TableHead>
             <TableHead>Variable Name</TableHead>
             <TableHead>Type</TableHead>
@@ -112,16 +112,21 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
                   isDragging && 'opacity-50',
                   onReorder && 'cursor-move'
                 )}
+                aria-label={`Variable ${index + 1}: ${variable.name}`}
               >
                 {/* Drag Handle */}
                 <TableCell>
                   {onReorder && (
-                    <GripVertical className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                    <GripVertical
+                      className="w-4 h-4 text-gray-400 group-hover:text-gray-600"
+                      aria-label={`Drag to reorder ${variable.name}`}
+                      role="img"
+                    />
                   )}
                 </TableCell>
 
                 {/* Order Number */}
-                <TableCell className="font-medium text-gray-500">
+                <TableCell className="font-medium text-gray-500" aria-label={`Position ${index + 1}`}>
                   {index + 1}
                 </TableCell>
 
@@ -152,12 +157,13 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
                         size="sm"
                         onClick={() => toggleExpanded(index)}
                         className="flex-shrink-0"
-                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                        aria-label={isExpanded ? `Collapse instructions for ${variable.name}` : `Expand instructions for ${variable.name}`}
+                        aria-expanded={isExpanded}
                       >
                         {isExpanded ? (
-                          <ChevronUp className="w-4 h-4" />
+                          <ChevronUp className="w-4 h-4" aria-hidden="true" />
                         ) : (
-                          <ChevronDown className="w-4 h-4" />
+                          <ChevronDown className="w-4 h-4" aria-hidden="true" />
                         )}
                       </Button>
                     )}
@@ -165,9 +171,9 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
 
                   {/* Classification Rules (if category type) */}
                   {variable.type === 'category' && variable.classificationRules && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1" role="list" aria-label="Category options">
                       {variable.classificationRules.map((rule, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">
+                        <Badge key={i} variant="secondary" className="text-xs" role="listitem">
                           {rule}
                         </Badge>
                       ))}
@@ -177,14 +183,14 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
 
                 {/* Actions */}
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex justify-end gap-1" role="group" aria-label={`Actions for ${variable.name}`}>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => onEdit(index)}
                       aria-label={`Edit ${variable.name}`}
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -192,7 +198,7 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
                       onClick={() => onDelete(index)}
                       aria-label={`Delete ${variable.name}`}
                     >
-                      <Trash2 className="w-4 h-4 text-red-500" />
+                      <Trash2 className="w-4 h-4 text-red-500" aria-hidden="true" />
                     </Button>
                   </div>
                 </TableCell>

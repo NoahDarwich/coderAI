@@ -124,7 +124,7 @@
 - [X] T057 [US2] Add progress indicator showing "N variables defined"
 - [X] T058 [US2] Add error states and loading states to wizard components
 - [X] T059 [US2] Add ARIA labels and keyboard navigation to VariableForm
-- [ ] T060 [US2] Add ARIA labels and keyboard navigation to wizard navigation (Back, Next, Add Another)
+- [X] T060 [US2] Add ARIA labels and keyboard navigation to wizard navigation (Back, Next, Add Another)
 - [ ] T061 [US2] Test wizard flow manually (add variables, navigate back, edit, delete)
 - [ ] T062 [US2] Test wizard state persistence across page refreshes
 
@@ -153,7 +153,7 @@
 - [X] T071 [US3] Implement drag-and-drop column reordering with @dnd-kit or react-beautiful-dnd
 - [X] T072 [US3] Implement "Confirm and Proceed" button with schema confirmation
 - [X] T073 [US3] Add error states and loading states to review components
-- [ ] T074 [US3] Add ARIA labels and keyboard navigation to SchemaTable
+- [X] T074 [US3] Add ARIA labels and keyboard navigation to SchemaTable
 - [ ] T075 [US3] Test schema review flow manually (view, edit, delete, reorder, confirm)
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should all work independently
@@ -187,7 +187,7 @@
 - [X] T090 [US4] Implement toast notification on processing completion
 - [X] T091 [US4] Implement error handling (log errors, continue processing other documents)
 - [X] T092 [US4] Add error states and loading states to processing components
-- [ ] T093 [US4] Add ARIA labels and keyboard navigation to processing controls
+- [X] T093 [US4] Add ARIA labels and keyboard navigation to processing controls
 - [ ] T094 [US4] Test sample processing flow manually (select size, run, review, flag, refine)
 - [ ] T095 [US4] Test full processing flow manually (approve, watch progress, navigate away, return, completion)
 
@@ -220,7 +220,7 @@
 - [X] T108 [US5] Implement CSV generation for long format (1 row per extracted field)
 - [X] T109 [US5] Implement file download with Blob API
 - [X] T110 [US5] Add error states and loading states to results components
-- [ ] T111 [US5] Add ARIA labels and keyboard navigation to ResultsTable
+- [X] T111 [US5] Add ARIA labels and keyboard navigation to ResultsTable
 - [ ] T112 [US5] Test results table manually (sort, filter, click cells, view source text)
 - [ ] T113 [US5] Test export flow manually (configure format, options, download, verify CSV)
 
