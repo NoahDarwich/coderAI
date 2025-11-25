@@ -3,8 +3,6 @@
  */
 
 'use client';
-
-import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,11 +15,6 @@ export default function SchemaPage() {
   const router = useRouter();
   const projectId = params.id as string;
   const { updateProject } = useProjectStore();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleComplete = () => {
     // Update project status to review phase
@@ -31,10 +24,6 @@ export default function SchemaPage() {
     });
     router.push(`/projects/${projectId}/schema/review`);
   };
-
-  if (!mounted) {
-    return null;
-  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

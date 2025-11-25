@@ -1,4 +1,5 @@
 // services/newMockApi.ts - Complete Mock API implementation for Phase 1
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   Project,
   Document,
@@ -28,11 +29,11 @@ import { mockProcessingJobs } from '@/mocks/mockProcessingJobs';
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // In-memory storage (persists during session)
-let projects = [...mockProjects];
+const projects = [...mockProjects];
 let documents = [...mockDocuments];
 let schemas = [...mockSchemas];
-let extractions = [...mockExtractionResults];
-let jobs = [...mockProcessingJobs];
+const extractions = [...mockExtractionResults];
+const jobs = [...mockProcessingJobs];
 
 // ============================================================================
 // Projects API Implementation
@@ -640,7 +641,7 @@ function generateLongCSV(extractions: ExtractionResult[], config: ExportConfig):
 
   extractions.forEach(ext => {
     ext.values.forEach(val => {
-      let row = [ext.documentId, val.variableId, `"${val.value}"`];
+      const row = [ext.documentId, val.variableId, `"${val.value}"`];
       if (config.includeConfidence) row.push(String(val.confidence));
       if (config.includeSourceText) row.push(`"${val.sourceText || ''}"`);
       rows.push(row.join(','));

@@ -37,7 +37,7 @@ export function SourceTextView({
         {label}
       </p>
       <blockquote className="border-l-4 border-primary pl-4 italic text-sm">
-        "{sourceText}"
+        &ldquo;{sourceText}&rdquo;
       </blockquote>
     </Card>
   );

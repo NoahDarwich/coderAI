@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { useProjectStore } from '@/store/projectStore';
 import { useWorkflowStore } from '@/store/workflowStore';
-import { Project } from '@/types';
 import { formatRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -44,11 +43,9 @@ export default function ProjectOverviewPage() {
 
   const projectStore = useProjectStore();
   const { setStep } = useWorkflowStore();
-  const [mounted, setMounted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     // Give Zustand persist middleware time to hydrate from localStorage
     const timer = setTimeout(() => {
       setHydrated(true);
@@ -57,24 +54,24 @@ export default function ProjectOverviewPage() {
   }, []);
 
   // Get project directly from store (only after hydration)
-  const project = (mounted && hydrated) ? projectStore.projects.find((p) => p.id === projectId) : null;
+  const project = hydrated ? projectStore.projects.find((p) => p.id === projectId) : null;
 
   useEffect(() => {
-    if (mounted && hydrated && project) {
+    if (hydrated && project) {
       console.log('Setting workflow step for project:', project.name);
       setStep(STATUS_TO_STEP[project.status] || 1);
     }
-  }, [mounted, hydrated, project, setStep]);
+  }, [hydrated, project, setStep]);
 
   useEffect(() => {
-    if (mounted && hydrated && !project && projectStore.projects.length > 0) {
+    if (hydrated && !project && projectStore.projects.length > 0) {
       console.log('Project not found, redirecting to /projects');
       router.push('/projects');
     }
-  }, [mounted, hydrated, project, projectStore.projects, router]);
+  }, [hydrated, project, projectStore.projects, router]);
 
-  // Show loading while mounting or hydrating
-  if (!mounted || !hydrated) {
+  // Show loading while hydrating
+  if (!hydrated) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse space-y-6">

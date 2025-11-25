@@ -72,7 +72,7 @@ export default function ResultsPage() {
           values: variables.map((variable) => {
             // Generate mock extracted values
             let value: string | number | boolean | null = null;
-            let confidence = Math.floor(Math.random() * 30) + 70; // 70-100
+            const confidence = Math.floor(Math.random() * 30) + 70; // 70-100
 
             if (variable.type === 'text') {
               value = `Sample ${variable.name.toLowerCase()} from ${doc.fileName}`;

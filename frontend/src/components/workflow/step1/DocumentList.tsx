@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Trash2, Download, Eye } from 'lucide-react';
+import { FileText, Trash2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -204,7 +204,7 @@ export function DocumentList({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Document</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{documentToDelete?.fileName}"?
+              Are you sure you want to delete &ldquo;{documentToDelete?.fileName}&rdquo;?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

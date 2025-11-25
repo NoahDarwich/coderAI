@@ -9,6 +9,7 @@ import { CSVExportRowWide, CSVExportRowLong } from '../types/extraction';
 /**
  * Convert array of objects to CSV string
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function objectsToCSV(objects: Record<string, any>[]): string {
   if (objects.length === 0) {
     return '';
@@ -31,6 +32,7 @@ export function objectsToCSV(objects: Record<string, any>[]): string {
 /**
  * Escape CSV value (handle commas, quotes, newlines)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function escapeCSVValue(value: any): string {
   if (value === null || value === undefined) {
     return '';

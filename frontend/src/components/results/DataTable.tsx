@@ -226,6 +226,7 @@ export function SortableHeader({
   column,
   children,
 }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   column: any;
   children: React.ReactNode;
 }) {
