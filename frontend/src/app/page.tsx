@@ -14,7 +14,7 @@ export default function LandingPage() {
           <p className="text-xl md:text-2xl text-slate-600 dark:text-slate-400 max-w-3xl">
             Extract structured data from your research documents using AI-powered conversational schema builder
           </p>
-          <Link href="/dashboard">
+          <Link href="/projects/new">
             <Button size="lg" className="mt-4">
               Get Started <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
