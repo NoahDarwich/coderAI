@@ -1,0 +1,958 @@
+openapi: 3.0.3
+info:
+  title: Data Extraction Workflow API
+  description: |
+    Backend API for the research data extraction tool. Manages projects, schemas,
+    document processing, and export generation.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api-staging.example.com/api/v1
+    description: Staging server
+  - url: https://api.example.com/api/v1
+    description: Production server
+
+tags:
+  - name: projects
+    description: Project management operations
+  - name: variables
+    description: Schema variable operations
+  - name: documents
+    description: Document upload and management
+  - name: processing
+    description: Job creation and status tracking
+  - name: exports
+    description: Data export generation
+
+paths:
+  /projects:
+    get:
+      tags: [projects]
+      summary: List all projects
+      description: Returns a paginated list of all projects
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: Filter by project status
+          schema:
+            $ref: '#/components/schemas/ProjectStatus'
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  total:
+                    type: integer
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+
+    post:
+      tags: [projects]
+      summary: Create new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /projects/{projectId}:
+    get:
+      tags: [projects]
+      summary: Get project by ID
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [projects]
+      summary: Update project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags: [projects]
+      summary: Delete project
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '204':
+          description: Project deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/variables:
+    get:
+      tags: [variables]
+      summary: List project variables
+      description: Returns all variables for a project, ordered by order field
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of variables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Variable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [variables]
+      summary: Create variable
+      description: Creates a new extraction variable and generates initial prompt
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariableCreate'
+      responses:
+        '201':
+          description: Variable created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /variables/{variableId}:
+    get:
+      tags: [variables]
+      summary: Get variable by ID
+      parameters:
+        - $ref: '#/components/parameters/VariableId'
+      responses:
+        '200':
+          description: Variable details including current prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariableDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [variables]
+      summary: Update variable
+      description: Updates variable and generates new prompt version
+      parameters:
+        - $ref: '#/components/parameters/VariableId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariableUpdate'
+      responses:
+        '200':
+          description: Variable updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags: [variables]
+      summary: Delete variable
+      parameters:
+        - $ref: '#/components/parameters/VariableId'
+      responses:
+        '204':
+          description: Variable deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/documents:
+    get:
+      tags: [documents]
+      summary: List project documents
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  total:
+                    type: integer
+
+    post:
+      tags: [documents]
+      summary: Upload document
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file (PDF, DOCX, or TXT)
+              required:
+                - file
+      responses:
+        '201':
+          description: Document uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          description: Invalid file type or size
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /documents/{documentId}:
+    get:
+      tags: [documents]
+      summary: Get document by ID
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [documents]
+      summary: Delete document
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '204':
+          description: Document deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/jobs:
+    get:
+      tags: [processing]
+      summary: List processing jobs
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProcessingJob'
+
+    post:
+      tags: [processing]
+      summary: Create processing job
+      description: Creates a sample or full processing job
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobCreate'
+      responses:
+        '201':
+          description: Job created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessingJob'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /jobs/{jobId}:
+    get:
+      tags: [processing]
+      summary: Get job status
+      description: Returns job status, progress, and recent logs
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [processing]
+      summary: Cancel job
+      description: Cancels a running job (status becomes CANCELLED)
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '204':
+          description: Job cancelled successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Job already completed or failed
+
+  /jobs/{jobId}/results:
+    get:
+      tags: [processing]
+      summary: Get job results
+      description: Returns all extractions for a completed job
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: minConfidence
+          in: query
+          description: Filter by minimum confidence score
+          schema:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+      responses:
+        '200':
+          description: Job results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Extraction'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /extractions/{extractionId}/feedback:
+    post:
+      tags: [processing]
+      summary: Submit extraction feedback
+      description: User feedback for prompt refinement
+      parameters:
+        - $ref: '#/components/parameters/ExtractionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackCreate'
+      responses:
+        '201':
+          description: Feedback submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/export:
+    post:
+      tags: [exports]
+      summary: Generate export file
+      description: Generates CSV/Excel/JSON export of project results
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportConfig'
+      responses:
+        '200':
+          description: Export file generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  downloadUrl:
+                    type: string
+                    format: uri
+                    description: Temporary download URL (expires in 1 hour)
+                  fileSize:
+                    type: integer
+                    description: File size in bytes
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    VariableId:
+      name: variableId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ExtractionId:
+      name: extractionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    ProjectStatus:
+      type: string
+      enum:
+        - CREATED
+        - SCHEMA_DEFINED
+        - SAMPLE_TESTING
+        - READY
+        - PROCESSING
+        - COMPLETE
+        - ERROR
+
+    ProjectScale:
+      type: string
+      enum:
+        - SMALL
+        - LARGE
+
+    VariableType:
+      type: string
+      enum:
+        - TEXT
+        - NUMBER
+        - DATE
+        - CATEGORY
+        - BOOLEAN
+
+    JobType:
+      type: string
+      enum:
+        - SAMPLE
+        - FULL
+
+    JobStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSING
+        - COMPLETE
+        - FAILED
+        - CANCELLED
+
+    ExportFormat:
+      type: string
+      enum:
+        - CSV_WIDE
+        - CSV_LONG
+        - EXCEL
+        - JSON
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scale:
+          $ref: '#/components/schemas/ProjectScale'
+        language:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, name, scale, language, status, createdAt, updatedAt]
+
+    ProjectCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        scale:
+          $ref: '#/components/schemas/ProjectScale'
+        language:
+          type: string
+          default: en
+        domain:
+          type: string
+          nullable: true
+      required: [name, scale]
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        domain:
+          type: string
+          nullable: true
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            variableCount:
+              type: integer
+            documentCount:
+              type: integer
+            variables:
+              type: array
+              items:
+                $ref: '#/components/schemas/Variable'
+
+    Variable:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/VariableType'
+        instructions:
+          type: string
+        classificationRules:
+          type: object
+          nullable: true
+        order:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, projectId, name, type, instructions, order]
+
+    VariableCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-zA-Z0-9_]+$'
+        type:
+          $ref: '#/components/schemas/VariableType'
+        instructions:
+          type: string
+          minLength: 10
+          maxLength: 5000
+        classificationRules:
+          type: object
+          nullable: true
+        order:
+          type: integer
+          minimum: 1
+      required: [name, type, instructions, order]
+
+    VariableUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        instructions:
+          type: string
+          minLength: 10
+          maxLength: 5000
+        classificationRules:
+          type: object
+          nullable: true
+        order:
+          type: integer
+
+    VariableDetail:
+      allOf:
+        - $ref: '#/components/schemas/Variable'
+        - type: object
+          properties:
+            currentPrompt:
+              type: object
+              properties:
+                version:
+                  type: integer
+                promptText:
+                  type: string
+                modelConfig:
+                  type: object
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        contentType:
+          type: string
+          enum: [PDF, DOCX, TXT]
+        sizeBytes:
+          type: integer
+        uploadedAt:
+          type: string
+          format: date-time
+      required: [id, projectId, name, contentType, sizeBytes, uploadedAt]
+
+    DocumentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Document'
+        - type: object
+          properties:
+            content:
+              type: string
+              description: Extracted document text
+
+    ProcessingJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        jobType:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, projectId, jobType, status, documentIds, progress]
+
+    JobCreate:
+      type: object
+      properties:
+        jobType:
+          $ref: '#/components/schemas/JobType'
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+      required: [jobType, documentIds]
+
+    JobDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProcessingJob'
+        - type: object
+          properties:
+            recentLogs:
+              type: array
+              items:
+                type: object
+                properties:
+                  level:
+                    type: string
+                    enum: [INFO, WARNING, ERROR]
+                  message:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+
+    Extraction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        jobId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        variableId:
+          type: string
+          format: uuid
+        value:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          nullable: true
+        sourceText:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, jobId, documentId, variableId]
+
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        extractionId:
+          type: string
+          format: uuid
+        isCorrect:
+          type: boolean
+        userComment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, extractionId, isCorrect, createdAt]
+
+    FeedbackCreate:
+      type: object
+      properties:
+        isCorrect:
+          type: boolean
+        userComment:
+          type: string
+          maxLength: 1000
+          nullable: true
+      required: [isCorrect]
+
+    ExportConfig:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/ExportFormat'
+        includeConfidence:
+          type: boolean
+          default: true
+        includeSourceText:
+          type: boolean
+          default: false
+        minConfidence:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          nullable: true
+      required: [format]
+
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Error type URI
+        title:
+          type: string
+          description: Short error description
+        status:
+          type: integer
+          description: HTTP status code
+        detail:
+          type: string
+          description: Detailed error message
+        instance:
+          type: string
+          description: Request path that caused error
+      required: [type, title, status, detail]
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.example.com/errors/not-found
+            title: Not Found
+            status: 404
+            detail: Project with ID '123e4567-e89b-12d3-a456-426614174000' not found
+            instance: /api/v1/projects/123e4567-e89b-12d3-a456-426614174000
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          example:
+            type: https://api.example.com/errors/validation
+            title: Validation Error
+            status: 422
+            detail: Request validation failed
+            instance: /api/v1/projects
+            errors:
+              - field: name
+                message: Name must be between 1 and 255 characters
+              - field: scale
+                message: Scale must be SMALL or LARGE
