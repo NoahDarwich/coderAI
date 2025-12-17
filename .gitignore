@@ -57,3 +57,21 @@ venv/
 
 # Vercel
 .vercel
+
+# Temporary documentation files
+*_STATUS.md
+*_GUIDE.md
+*_COMPLETE.md
+*_FIX.md
+IMPLEMENTATION_*.md
+MVP_*.md
+TESTING_*.md
+TROUBLESHOOTING.md
+*ALIGNMENT*.md
+CONNECT_*.md
+setup_local_run.md
+
+# Temporary scripts
+create_and_open.sh
+create_test_project.sh
+restart_frontend.sh
