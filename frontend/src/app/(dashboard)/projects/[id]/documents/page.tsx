@@ -9,6 +9,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowRight, ArrowLeft, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { DocumentUploader } from '@/components/workflow/step1/DocumentUploader';
 import { DocumentList } from '@/components/workflow/step1/DocumentList';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
@@ -16,6 +20,8 @@ import { useProjectStore } from '@/store/projectStore';
 import { Document } from '@/types';
 import { generateId } from '@/lib/utils';
 import { mockDocuments } from '@/mocks/mockDocuments';
+import { apiClient } from '@/lib/api/client';
+import { useDocuments } from '@/lib/api/documents';
 
 export default function DocumentsPage() {
   const params = useParams();
@@ -25,31 +31,23 @@ export default function DocumentsPage() {
 
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [textDocName, setTextDocName] = useState('');
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Load documents for this project
+  // Load documents for this project using API hook
+  const { data: apiDocuments, isLoading, refetch } = useDocuments(projectId);
+
+  // Update local state when API data changes
   useEffect(() => {
-    if (!mounted) return;
-
-    const loadDocuments = async () => {
-      setIsLoading(true);
-      try {
-        // Simulate API call - filter mock documents by projectId
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const projectDocs = mockDocuments.filter((doc) => doc.projectId === projectId);
-        setDocuments(projectDocs);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadDocuments();
-  }, [projectId, mounted]);
+    if (apiDocuments) {
+      setDocuments(apiDocuments);
+    }
+  }, [apiDocuments]);
 
   const handleUpload = async (files: File[]) => {
     setIsUploading(true);
@@ -104,6 +102,77 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleTextSubmit = async () => {
+    if (!textInput.trim() || !textDocName.trim()) return;
+
+    setIsUploading(true);
+    try {
+      // Check if using mock data
+      const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
+
+      if (useMockData) {
+        // Mock mode - simulate creation
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const newDoc: Document = {
+          id: generateId(),
+          projectId,
+          fileName: textDocName,
+          fileType: 'txt',
+          fileSize: new Blob([textInput]).size,
+          uploadedAt: new Date().toISOString(),
+          status: 'uploaded',
+          contentPreview: textInput.substring(0, 200),
+        };
+
+        setDocuments((prev) => [...prev, newDoc]);
+      } else {
+        // Real API call
+        const response = await apiClient.post(
+          `/api/v1/projects/${projectId}/documents/text`,
+          {
+            name: textDocName,
+            content: textInput,
+          }
+        );
+
+        // Convert backend response to frontend format
+        const backendDoc = response as any;
+        const newDoc: Document = {
+          id: backendDoc.id,
+          projectId: backendDoc.project_id,
+          fileName: backendDoc.name,
+          fileType: backendDoc.content_type.toLowerCase() as 'pdf' | 'docx' | 'txt',
+          fileSize: backendDoc.size_bytes,
+          uploadedAt: backendDoc.uploaded_at,
+          status: 'uploaded',
+          contentPreview: textInput.substring(0, 200),
+        };
+
+        setDocuments((prev) => [...prev, newDoc]);
+
+        // Refetch documents to get updated list from backend
+        refetch();
+      }
+
+      // Clear form
+      setTextInput('');
+      setTextDocName('');
+
+      // Update project document count
+      updateProject(projectId, {
+        documentCount: documents.length + 1,
+        status: 'setup',
+      });
+    } catch (error) {
+      console.error('Text document creation failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to create text document: ${errorMessage}\n\nPlease make sure:\n1. Backend is running (http://localhost:8000)\n2. Project exists in backend\n3. Check browser console for details`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleContinue = () => {
     // Update project status to schema phase
     updateProject(projectId, {
@@ -145,16 +214,62 @@ export default function DocumentsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Upload Section */}
+        {/* Upload/Text Input Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Upload Documents</CardTitle>
+            <CardTitle>Add Documents</CardTitle>
             <CardDescription>
-              Drag and drop files or click to browse. Supported formats: PDF, DOCX, TXT (max 10MB per file)
+              Upload files or paste text directly for quick testing (MVP feature)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <DocumentUploader onUpload={handleUpload} isUploading={isUploading} />
+            <Tabs defaultValue="upload" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="upload">Upload Files</TabsTrigger>
+                <TabsTrigger value="text">Paste Text (MVP)</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="upload" className="mt-4">
+                <DocumentUploader onUpload={handleUpload} isUploading={isUploading} />
+              </TabsContent>
+
+              <TabsContent value="text" className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="docName">Document Name</Label>
+                  <Input
+                    id="docName"
+                    placeholder="e.g., Article 1, Event Report, News Article..."
+                    value={textDocName}
+                    onChange={(e) => setTextDocName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="textContent">Text Content</Label>
+                  <Textarea
+                    id="textContent"
+                    placeholder="Paste your text content here...&#10;&#10;Example: News articles, reports, documents, or any text you want to extract data from."
+                    rows={15}
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Tip: You can paste text in any language. The AI will extract structured data based on your defined variables.
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleTextSubmit}
+                  disabled={!textInput.trim() || !textDocName.trim() || isUploading}
+                  className="w-full"
+                  size="lg"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {isUploading ? 'Adding...' : 'Add Text Document'}
+                </Button>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 

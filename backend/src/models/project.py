@@ -22,6 +22,7 @@ class ProjectStatus(str, enum.Enum):
     """Project status enumeration."""
     CREATED = "CREATED"
     SCHEMA_DEFINED = "SCHEMA_DEFINED"
+    SCHEMA_APPROVED = "SCHEMA_APPROVED"  # Schema approved and ready for processing
     SAMPLE_TESTING = "SAMPLE_TESTING"
     READY = "READY"
     PROCESSING = "PROCESSING"

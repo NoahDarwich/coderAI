@@ -1,0 +1,389 @@
+"""
+Prompt generation service for creating optimized LLM prompts from variable definitions.
+
+This service transforms user's natural language extraction instructions into
+structured, optimized prompts for different LLM models.
+"""
+from typing import Dict, Any, Optional
+
+from src.models.project import Project
+from src.models.variable import Variable, VariableType
+
+
+def generate_prompt(variable: Variable, project: Optional[Project] = None) -> Dict[str, Any]:
+    """
+    Generate an optimized LLM prompt from a variable definition.
+
+    Args:
+        variable: Variable model with extraction instructions
+        project: Optional project model for additional context
+
+    Returns:
+        Dictionary with 'prompt_text' and 'model_config' keys
+    """
+    # Get project context
+    project_context = _build_project_context(project) if project else ""
+
+    # Generate prompt based on variable type
+    if variable.type == VariableType.TEXT:
+        prompt_text = _generate_text_prompt(variable, project_context)
+    elif variable.type == VariableType.CATEGORY:
+        prompt_text = _generate_category_prompt(variable, project_context)
+    elif variable.type == VariableType.NUMBER:
+        prompt_text = _generate_number_prompt(variable, project_context)
+    elif variable.type == VariableType.DATE:
+        prompt_text = _generate_date_prompt(variable, project_context)
+    elif variable.type == VariableType.BOOLEAN:
+        prompt_text = _generate_boolean_prompt(variable, project_context)
+    elif variable.type == VariableType.LOCATION:
+        prompt_text = _generate_location_prompt(variable, project_context)
+    else:
+        raise ValueError(f"Unknown variable type: {variable.type}")
+
+    # Generate model configuration
+    model_config = _generate_model_config(variable)
+
+    return {
+        "prompt_text": prompt_text,
+        "model_config": model_config,
+    }
+
+
+def _build_project_context(project: Project) -> str:
+    """
+    Build context string from project metadata.
+
+    Args:
+        project: Project model
+
+    Returns:
+        Context string describing the project
+    """
+    context_parts = [f"Project: {project.name}"]
+
+    if project.domain:
+        context_parts.append(f"Domain: {project.domain}")
+
+    if project.language and project.language != "en":
+        context_parts.append(f"Document Language: {project.language}")
+
+    context_parts.append(f"Project Scale: {project.scale.value}")
+
+    return "\n".join(context_parts)
+
+
+def _generate_text_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for TEXT variable type.
+
+    TEXT variables extract free-form text passages (e.g., descriptions, quotes, summaries).
+    """
+    prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided document.
+
+{project_context}
+
+**Extraction Task:**
+Variable Name: {variable.name}
+Variable Type: Text (free-form text)
+
+**Instructions:**
+{variable.instructions}
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": "extracted text here",
+    "confidence": 95,
+    "source_text": "relevant excerpt from document that supports this extraction"
+}}
+
+**Guidelines:**
+1. Extract the exact text as it appears in the document (preserve formatting, spelling, punctuation)
+2. If multiple instances exist, extract the most relevant or comprehensive one
+3. If information is not found or unclear, set value to null
+4. confidence: 0-100 scale (100 = certain, 50 = moderate, 0 = not found)
+5. source_text: Include the surrounding context (max 200 characters)
+6. Be precise and faithful to the source document
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_category_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for CATEGORY variable type.
+
+    CATEGORY variables classify text into predefined categories.
+    """
+    # Extract classification rules
+    rules = variable.classification_rules or {}
+    categories = rules.get("categories", [])
+    allow_multiple = rules.get("allow_multiple", False)
+    allow_other = rules.get("allow_other", True)
+
+    # Format categories list
+    categories_list = "\n".join([f"- {cat}" for cat in categories])
+
+    # Build selection instructions
+    selection_type = "one or more categories" if allow_multiple else "exactly one category"
+    other_option = "\n- You may respond with a category not in the list if 'allow_other' is true and none fit well" if allow_other else ""
+
+    prompt = f"""You are a precise classification assistant. Categorize the following information from the provided document.
+
+{project_context}
+
+**Classification Task:**
+Variable Name: {variable.name}
+Variable Type: Category (classification)
+
+**Instructions:**
+{variable.instructions}
+
+**Available Categories:**
+{categories_list}{other_option}
+
+**Selection Rules:**
+- Select {selection_type} from the list above
+- Base your decision strictly on evidence in the document
+- If no category fits and 'allow_other' is false, respond with null
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": {"[\"category1\", \"category2\"]" if allow_multiple else "\"category_name\""},
+    "confidence": 95,
+    "source_text": "relevant excerpt from document that supports this classification"
+}}
+
+**Guidelines:**
+1. confidence: 0-100 scale (100 = clear match, 50 = ambiguous, 0 = not found)
+2. source_text: Include the passage that supports your classification (max 200 characters)
+3. Be conservative - only classify if you have clear evidence
+4. For ambiguous cases, reduce confidence score rather than forcing a category
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_number_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for NUMBER variable type.
+
+    NUMBER variables extract numerical values (integers or floats).
+    """
+    prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided document.
+
+{project_context}
+
+**Extraction Task:**
+Variable Name: {variable.name}
+Variable Type: Number (integer or decimal)
+
+**Instructions:**
+{variable.instructions}
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": 42.5,
+    "confidence": 95,
+    "source_text": "relevant excerpt from document containing this number"
+}}
+
+**Guidelines:**
+1. Extract only the numerical value (no currency symbols, units, or formatting)
+2. Use decimal notation (e.g., 1234.56, not "1,234.56")
+3. If multiple numbers exist, extract the one most relevant to the instructions
+4. If the value is not found or ambiguous, set value to null
+5. confidence: 0-100 scale (100 = explicit number, 50 = calculated/inferred, 0 = not found)
+6. source_text: Include the exact phrase containing the number (max 200 characters)
+7. Be precise - do not estimate or calculate unless explicitly instructed
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_date_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for DATE variable type.
+
+    DATE variables extract dates in ISO 8601 format (YYYY-MM-DD).
+    """
+    prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided document.
+
+{project_context}
+
+**Extraction Task:**
+Variable Name: {variable.name}
+Variable Type: Date
+
+**Instructions:**
+{variable.instructions}
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": "2024-03-15",
+    "confidence": 95,
+    "source_text": "relevant excerpt from document containing this date"
+}}
+
+**Guidelines:**
+1. Always format dates as YYYY-MM-DD (ISO 8601 standard)
+2. If only year is available, use YYYY-01-01
+3. If only year and month are available, use YYYY-MM-01
+4. Convert all date formats (e.g., "March 15, 2024", "15/03/2024", "Mar 15 2024") to YYYY-MM-DD
+5. If multiple dates exist, extract the one most relevant to the instructions
+6. If date is not found or ambiguous, set value to null
+7. confidence: 0-100 scale (100 = explicit date, 50 = partial/inferred, 0 = not found)
+8. source_text: Include the exact phrase containing the date (max 200 characters)
+9. Be careful with ambiguous formats (e.g., "03/04/2024" could be Mar 4 or Apr 3)
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_boolean_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for BOOLEAN variable type.
+
+    BOOLEAN variables extract yes/no or true/false values.
+    """
+    prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided document.
+
+{project_context}
+
+**Assessment Task:**
+Variable Name: {variable.name}
+Variable Type: Boolean (true/false)
+
+**Instructions:**
+{variable.instructions}
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": true,
+    "confidence": 95,
+    "source_text": "relevant excerpt from document that supports this assessment"
+}}
+
+**Guidelines:**
+1. Respond with true or false (boolean, not string)
+2. true = condition is explicitly or implicitly present/affirmed in document
+3. false = condition is explicitly denied or absent from document
+4. If evidence is insufficient or contradictory, set value to null
+5. confidence: 0-100 scale (100 = explicit statement, 50 = inferred, 0 = unclear)
+6. source_text: Include the passage that supports your assessment (max 200 characters)
+7. Be conservative - only return true/false if you have clear evidence
+8. Do not assume or infer beyond what the document explicitly states
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_location_prompt(variable: Variable, project_context: str) -> str:
+    """
+    Generate prompt for LOCATION variable type.
+
+    LOCATION variables extract geographical locations, addresses, or place names.
+    """
+    prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided document.
+
+{project_context}
+
+**Extraction Task:**
+Variable Name: {variable.name}
+Variable Type: Location (geographical location, address, or place name)
+
+**Instructions:**
+{variable.instructions}
+
+**Output Format:**
+You must respond with a valid JSON object in this exact format:
+{{
+    "value": "extracted location here",
+    "confidence": 95,
+    "source_text": "relevant excerpt from document mentioning this location"
+}}
+
+**Guidelines:**
+1. Extract the location name exactly as it appears in the document (preserve spelling, capitalization)
+2. Locations may be:
+   - Countries (e.g., "United States", "Jordan")
+   - Cities/towns (e.g., "Amman", "New York City")
+   - Regions/provinces (e.g., "Balqa Governorate", "California")
+   - Addresses (e.g., "123 King Abdullah St, Amman")
+   - Landmarks/buildings (e.g., "Parliament Building", "Central Market")
+   - Geographical features (e.g., "Jordan River", "Dead Sea")
+3. If multiple locations are mentioned, extract the most relevant one based on the instructions
+4. If no location is found, set value to null
+5. confidence: 0-100 scale (100 = explicitly mentioned, 50 = inferred from context, 0 = not found)
+6. source_text: Include the full sentence or phrase mentioning the location (max 200 characters)
+7. Be precise - only extract locations, not general directional terms (e.g., "north", "south")
+8. Preserve original language/script if the document uses non-Latin characters
+
+**Document:**
+{{document_text}}
+"""
+    return prompt.strip()
+
+
+def _generate_model_config(variable: Variable) -> Dict[str, Any]:
+    """
+    Generate optimal model configuration based on variable type.
+
+    Args:
+        variable: Variable model
+
+    Returns:
+        Dictionary with model configuration parameters
+    """
+    # Base configuration for all types
+    config = {
+        "model": "gpt-4",
+        "top_p": 1.0,
+    }
+
+    # Type-specific configuration
+    if variable.type == VariableType.TEXT:
+        # Text extraction: moderate temperature, longer output
+        config["temperature"] = 0.2
+        config["max_tokens"] = 2000
+
+    elif variable.type == VariableType.CATEGORY:
+        # Classification: very low temperature for consistency
+        config["temperature"] = 0.1
+        config["max_tokens"] = 500
+
+    elif variable.type == VariableType.NUMBER:
+        # Numerical extraction: lowest temperature for precision
+        config["temperature"] = 0.0
+        config["max_tokens"] = 300
+
+    elif variable.type == VariableType.DATE:
+        # Date extraction: lowest temperature for precision
+        config["temperature"] = 0.0
+        config["max_tokens"] = 300
+
+    elif variable.type == VariableType.BOOLEAN:
+        # Boolean assessment: very low temperature
+        config["temperature"] = 0.1
+        config["max_tokens"] = 300
+
+    elif variable.type == VariableType.LOCATION:
+        # Location extraction: low temperature for precision
+        config["temperature"] = 0.1
+        config["max_tokens"] = 500
+
+    return config

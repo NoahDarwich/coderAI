@@ -1,0 +1,25 @@
+# Minimal requirements for testing (all have pre-built wheels)
+# Use this if requirements.txt fails to install
+
+# Core Framework (pure Python, no compilation needed)
+fastapi==0.109.0
+uvicorn==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database - SQLAlchemy only (skip asyncpg for now)
+sqlalchemy==2.0.25
+
+# Skip LLM libraries for basic testing
+# openai==1.10.0
+# langchain==0.1.0
+
+# Skip pandas for basic testing (causes build issues)
+# pandas>=2.1.0
+
+# Basic utilities (pure Python)
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Alembic (pure Python)
+alembic==1.13.1

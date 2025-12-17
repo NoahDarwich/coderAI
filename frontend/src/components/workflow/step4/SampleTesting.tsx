@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,12 +14,16 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
-import { ExtractionResult, Variable } from '@/types';
+import { useCreateJob, useJobStatus, useJobResults } from '@/lib/api/processing';
+import type { Document } from '@/lib/types/api';
+import type { SchemaVariable } from '@/lib/types/api';
 
 interface SampleTestingProps {
   projectId: string;
-  variables: Variable[];
+  documents: Document[];
+  variables: SchemaVariable[];
   totalDocuments: number;
   onApprove: () => void;
   onRefineSchema: () => void;
@@ -27,69 +31,107 @@ interface SampleTestingProps {
 
 export function SampleTesting({
   projectId,
+  documents,
   variables,
   totalDocuments,
   onApprove,
   onRefineSchema,
 }: SampleTestingProps) {
   const [sampleSize, setSampleSize] = useState<number>(10);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [sampleResults, setSampleResults] = useState<ExtractionResult[]>([]);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, 'correct' | 'incorrect'>>({});
 
+  // Debug logging
+  useEffect(() => {
+    console.log('=== SAMPLE TESTING DEBUG ===');
+    console.log('Received variables:', variables);
+    console.log('Variables count:', variables?.length);
+    console.log('Variables array:', JSON.stringify(variables, null, 2));
+    console.log('===========================');
+  }, [variables]);
+
+  // API hooks
+  const createJob = useCreateJob(projectId);
+  const { data: job, isLoading: jobLoading } = useJobStatus(jobId, !!jobId);
+  const { data: results, isLoading: resultsLoading } = useJobResults(
+    jobId,
+    job?.status === 'completed'
+  );
+
+  const isProcessing = job?.status === 'processing' || job?.status === 'pending';
+  const isComplete = job?.status === 'completed';
+  const hasFailed = job?.status === 'failed';
+
+  // Reset job when sample size changes
+  useEffect(() => {
+    if (!isProcessing && !isComplete) {
+      setJobId(null);
+      setFeedback({});
+    }
+  }, [sampleSize]);
+
   const handleRunSample = async () => {
-    setIsProcessing(true);
-    setSampleResults([]);
-    setFeedback({});
+    if (documents.length === 0) {
+      toast.error('No documents available', {
+        description: 'Please upload documents before running sample test.',
+      });
+      return;
+    }
 
-    // Simulate processing delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (variables.length === 0) {
+      toast.error('No variables defined', {
+        description: 'Please define variables in your schema first.',
+      });
+      return;
+    }
 
-    // Generate mock sample results
-    const mockResults: ExtractionResult[] = Array.from({ length: sampleSize }, (_, i) => ({
-      id: `sample-${i}`,
-      projectId,
-      documentId: `doc-${i}`,
-      values: variables.map((variable) => {
-        const confidence = Math.floor(Math.random() * 40) + 60; // 60-100
-        let value: string | number | boolean | null = null;
+    try {
+      // Get sample of document IDs
+      const actualSampleSize = Math.min(sampleSize, documents.length);
+      const sampleDocIds = documents.slice(0, actualSampleSize).map(d => d.id);
 
-        if (variable.type === 'text') {
-          value = `Sample ${variable.name} ${i + 1}`;
-        } else if (variable.type === 'number') {
-          value = Math.floor(Math.random() * 100) + 1;
-        } else if (variable.type === 'date') {
-          value = `2024-0${Math.floor(Math.random() * 9) + 1}-15`;
-        } else if (variable.type === 'category' && variable.classificationRules) {
-          value = variable.classificationRules[Math.floor(Math.random() * variable.classificationRules.length)];
-        } else if (variable.type === 'boolean') {
-          value = Math.random() > 0.5;
-        }
+      // Create SAMPLE job
+      const createdJob = await createJob.mutateAsync({
+        jobType: 'SAMPLE',
+        documentIds: sampleDocIds,
+      });
 
-        return {
-          variableId: variable.id,
-          value,
-          confidence,
-          sourceText: `Sample text for document ${i + 1}...`,
-        };
-      }),
-      completedAt: new Date().toISOString(),
-    }));
+      setJobId(createdJob.id);
+      setFeedback({});
 
-    setSampleResults(mockResults);
-    setIsProcessing(false);
-
-    // Show success toast
-    toast.success('Sample Processing Complete!', {
-      description: `Tested ${sampleSize} documents. Review results and flag any errors.`,
-    });
+      toast.info('Sample processing started', {
+        description: `Processing ${actualSampleSize} documents...`,
+      });
+    } catch (error) {
+      console.error('Failed to start sample processing:', error);
+      toast.error('Failed to start processing', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    }
   };
 
-  const handleFeedback = (resultId: string, variableId: string, correct: boolean) => {
-    const key = `${resultId}-${variableId}`;
+  // Show success toast when complete
+  useEffect(() => {
+    if (isComplete && results) {
+      toast.success('Sample Processing Complete!', {
+        description: `Processed ${results.extractions.length} extractions. Review results below.`,
+      });
+    }
+  }, [isComplete, results]);
+
+  // Show error toast when failed
+  useEffect(() => {
+    if (hasFailed) {
+      toast.error('Processing Failed', {
+        description: 'An error occurred during processing. Check the logs for details.',
+      });
+    }
+  }, [hasFailed]);
+
+  const handleFeedback = (extractionId: string, correct: boolean) => {
     setFeedback((prev) => ({
       ...prev,
-      [key]: correct ? 'correct' : 'incorrect',
+      [extractionId]: correct ? 'correct' : 'incorrect',
     }));
   };
 
@@ -115,6 +157,17 @@ export function SampleTesting({
   const accuracy = calculateAccuracy();
   const hasFeedback = Object.keys(feedback).length > 0;
 
+  // Group extractions by document
+  const extractionsByDocument = results?.extractions.reduce((acc, extraction) => {
+    if (!acc[extraction.document_id]) {
+      acc[extraction.document_id] = [];
+    }
+    acc[extraction.document_id].push(extraction);
+    return acc;
+  }, {} as Record<string, typeof results.extractions>) || {};
+
+  const documentIds = Object.keys(extractionsByDocument);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -130,7 +183,7 @@ export function SampleTesting({
             <Select
               value={sampleSize.toString()}
               onValueChange={(value) => setSampleSize(parseInt(value))}
-              disabled={isProcessing}
+              disabled={isProcessing || createJob.isPending}
             >
               <SelectTrigger id="sample-size" className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Select sample size" />
@@ -147,12 +200,35 @@ export function SampleTesting({
             </p>
           </div>
 
+          {documents.length === 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No documents uploaded. Please upload documents before running sample test.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {variables.length === 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No variables defined. Please define variables in your schema first.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Button
             onClick={handleRunSample}
-            disabled={isProcessing || variables.length === 0}
+            disabled={
+              isProcessing ||
+              createJob.isPending ||
+              variables.length === 0 ||
+              documents.length === 0
+            }
             className="w-full sm:w-auto"
           >
-            {isProcessing ? (
+            {isProcessing || createJob.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing Sample...
@@ -167,8 +243,41 @@ export function SampleTesting({
         </CardContent>
       </Card>
 
+      {/* Processing Progress */}
+      {job && isProcessing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Processing...</CardTitle>
+            <CardDescription>
+              Extracting data from sample documents
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">
+                  Processing {job.processedDocuments} of {job.totalDocuments} documents
+                </span>
+                <span className="font-medium">{job.progress}%</span>
+              </div>
+              <Progress value={job.progress} className="h-2" />
+            </div>
+
+            {job.logs && job.logs.length > 0 && (
+              <div className="text-sm space-y-1 max-h-32 overflow-y-auto">
+                {job.logs.slice(-5).map((log, idx) => (
+                  <div key={idx} className="text-gray-600">
+                    {log.message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Sample Results */}
-      {sampleResults.length > 0 && (
+      {isComplete && results && documentIds.length > 0 && (
         <>
           <Alert className="bg-blue-50 border-blue-200">
             <AlertCircle className="h-4 w-4 text-blue-600" />
@@ -182,7 +291,7 @@ export function SampleTesting({
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Sample Results ({sampleResults.length} documents)</CardTitle>
+                  <CardTitle>Sample Results ({documentIds.length} documents)</CardTitle>
                   <CardDescription>
                     Review and validate the extracted data
                   </CardDescription>
@@ -208,51 +317,73 @@ export function SampleTesting({
                     </tr>
                   </thead>
                   <tbody>
-                    {sampleResults.map((result, idx) => (
-                      <tr key={result.id} className="border-b hover:bg-muted/50">
-                        <td className="p-3 font-medium">Doc {idx + 1}</td>
-                        {result.values.map((value) => {
-                          const feedbackKey = `${result.id}-${value.variableId}`;
-                          const userFeedback = feedback[feedbackKey];
+                    {documentIds.map((docId, idx) => {
+                      const docExtractions = extractionsByDocument[docId];
+                      const document = documents.find(d => d.id === docId);
 
-                          return (
-                            <td key={value.variableId} className="p-3">
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <span className={getConfidenceColor(value.confidence)}>
-                                    {getConfidenceIcon(value.confidence)}
-                                  </span>
-                                  <span className="font-mono text-sm">
-                                    {String(value.value)}
-                                  </span>
+                      return (
+                        <tr key={docId} className="border-b hover:bg-muted/50">
+                          <td className="p-3 font-medium">
+                            {document?.filename || `Doc ${idx + 1}`}
+                          </td>
+                          {variables.map((variable) => {
+                            const extraction = docExtractions.find(
+                              e => e.variable_id === variable.id
+                            );
+                            const userFeedback = extraction ? feedback[extraction.id] : undefined;
+
+                            if (!extraction) {
+                              return (
+                                <td key={variable.id} className="p-3">
+                                  <span className="text-gray-400">N/A</span>
+                                </td>
+                              );
+                            }
+
+                            return (
+                              <td key={variable.id} className="p-3">
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className={getConfidenceColor(extraction.confidence)}>
+                                      {getConfidenceIcon(extraction.confidence)}
+                                    </span>
+                                    <span className="font-mono text-sm">
+                                      {String(extraction.value || 'null')}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {extraction.confidence}% confidence
+                                  </div>
+                                  {extraction.source_text && (
+                                    <div className="text-xs text-muted-foreground italic">
+                                      "{extraction.source_text.substring(0, 50)}..."
+                                    </div>
+                                  )}
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant={userFeedback === 'correct' ? 'default' : 'outline'}
+                                      className="h-7 px-2"
+                                      onClick={() => handleFeedback(extraction.id, true)}
+                                    >
+                                      <CheckCircle2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant={userFeedback === 'incorrect' ? 'destructive' : 'outline'}
+                                      className="h-7 px-2"
+                                      onClick={() => handleFeedback(extraction.id, false)}
+                                    >
+                                      <XCircle className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {value.confidence}% confidence
-                                </div>
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    variant={userFeedback === 'correct' ? 'default' : 'outline'}
-                                    className="h-7 px-2"
-                                    onClick={() => handleFeedback(result.id, value.variableId, true)}
-                                  >
-                                    <CheckCircle2 className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant={userFeedback === 'incorrect' ? 'destructive' : 'outline'}
-                                    className="h-7 px-2"
-                                    onClick={() => handleFeedback(result.id, value.variableId, false)}
-                                  >
-                                    <XCircle className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -271,6 +402,16 @@ export function SampleTesting({
             </Button>
           </div>
         </>
+      )}
+
+      {/* Failed State */}
+      {hasFailed && (
+        <Alert variant="destructive">
+          <XCircle className="h-4 w-4" />
+          <AlertDescription>
+            Processing failed. Please check your configuration and try again.
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

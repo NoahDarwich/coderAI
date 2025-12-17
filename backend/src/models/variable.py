@@ -19,6 +19,7 @@ class VariableType(str, enum.Enum):
     DATE = "DATE"
     CATEGORY = "CATEGORY"
     BOOLEAN = "BOOLEAN"
+    LOCATION = "LOCATION"
 
 
 class Variable(Base):

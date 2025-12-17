@@ -6,111 +6,86 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ResultsTable } from '@/components/workflow/step5/ResultsTable';
-import { ExportModal } from '@/components/workflow/step5/ExportModal';
-import { ConfidenceFilter } from '@/components/workflow/step5/ConfidenceFilter';
+import { ResultsDataTable } from '@/components/results/ResultsDataTable';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
-import { useSchemaWizardStore } from '@/store/schemaWizardStore';
-import { ExtractionResult } from '@/types';
-import { generateId } from '@/lib/utils';
-import { mockDocuments } from '@/mocks/mockDocuments';
+import { apiClient } from '@/lib/api/client';
+
+interface DocumentResult {
+  document_id: string;
+  document_name: string;
+  data: Record<string, any>;
+  average_confidence: number;
+  flagged: boolean;
+}
 
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const { variables } = useSchemaWizardStore();
 
   const [mounted, setMounted] = useState(false);
-  const [results, setResults] = useState<ExtractionResult[]>([]);
-  const [filteredResults, setFilteredResults] = useState<ExtractionResult[]>([]);
-  const [documentNames, setDocumentNames] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<DocumentResult[]>([]);
+  const [variables, setVariables] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Filter results by confidence threshold
-  useEffect(() => {
-    if (results.length === 0) {
-      setFilteredResults([]);
-      return;
-    }
-
-    const filtered = results.filter((result) => {
-      // Check if all values meet the threshold
-      return result.values.every((value) => value.confidence >= confidenceThreshold);
-    });
-
-    setFilteredResults(filtered);
-  }, [results, confidenceThreshold]);
-
-  // Load results
+  // Load results from API
   useEffect(() => {
     if (!mounted) return;
 
     const loadResults = async () => {
       setIsLoading(true);
+      setError(null);
       try {
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
 
-        // Get documents for this project
-        const projectDocs = mockDocuments.filter((doc) => doc.projectId === projectId);
+        if (useMockData) {
+          // Mock data mode
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setResults([]);
+          setVariables([]);
+        } else {
+          // Real API calls
 
-        // Generate mock results
-        const mockResults: ExtractionResult[] = projectDocs.map((doc) => ({
-          id: generateId(),
-          projectId,
-          documentId: doc.id,
-          values: variables.map((variable) => {
-            // Generate mock extracted values
-            let value: string | number | boolean | null = null;
-            const confidence = Math.floor(Math.random() * 30) + 70; // 70-100
+          // Fetch project results
+          const resultsResponse = await apiClient.get(
+            `/api/v1/projects/${projectId}/results`
+          ) as any;
 
-            if (variable.type === 'text') {
-              value = `Sample ${variable.name.toLowerCase()} from ${doc.fileName}`;
-            } else if (variable.type === 'number') {
-              value = Math.floor(Math.random() * 1000) + 1;
-            } else if (variable.type === 'date') {
-              value = '2024-01-15';
-            } else if (variable.type === 'category' && variable.classificationRules) {
-              value = variable.classificationRules[Math.floor(Math.random() * variable.classificationRules.length)];
-            } else if (variable.type === 'boolean') {
-              value = Math.random() > 0.5;
+          if (resultsResponse && resultsResponse.documents) {
+            setResults(resultsResponse.documents);
+
+            // Fetch variables to get correct order
+            const variablesResponse = await apiClient.get(
+              `/api/v1/projects/${projectId}/variables`
+            ) as any[];
+
+            if (variablesResponse && Array.isArray(variablesResponse)) {
+              const orderedNames = variablesResponse
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((v: any) => v.name);
+              setVariables(orderedNames);
             }
-
-            return {
-              variableId: variable.id,
-              value,
-              confidence,
-              sourceText: `This is a sample text excerpt from ${doc.fileName} that was used to extract ${variable.name}...`,
-            };
-          }),
-          completedAt: new Date().toISOString(),
-        }));
-
-        setResults(mockResults);
-
-        // Create document name mapping
-        const names: Record<string, string> = {};
-        projectDocs.forEach((doc) => {
-          names[doc.id] = doc.fileName;
-        });
-        setDocumentNames(names);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load results:', err);
+        setError('Failed to load results. Please try again.');
       } finally {
         setIsLoading(false);
       }
     };
 
     loadResults();
-  }, [projectId, variables, mounted]);
+  }, [projectId, mounted]);
 
   if (!mounted) {
     return null;
@@ -158,8 +133,15 @@ export default function ResultsPage() {
         <WorkflowProgress currentStep={5} />
       </div>
 
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Success Alert */}
-      {!isLoading && results.length > 0 && (
+      {!isLoading && !error && results.length > 0 && (
         <Alert className="bg-green-50 border-green-200 mb-6">
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
@@ -169,66 +151,47 @@ export default function ResultsPage() {
         </Alert>
       )}
 
-      {/* Filters and Results */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-        {/* Confidence Filter Sidebar */}
-        {!isLoading && results.length > 0 && (
-          <div className="lg:col-span-1">
-            <ConfidenceFilter
-              value={confidenceThreshold}
-              onChange={setConfidenceThreshold}
-            />
-          </div>
-        )}
-
-        {/* Results Table */}
-        <div className={!isLoading && results.length > 0 ? "lg:col-span-3" : "lg:col-span-4"}>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Extracted Data</CardTitle>
-                  <CardDescription>
-                    Search, sort, and review your extraction results
-                  </CardDescription>
-                </div>
-                {!isLoading && filteredResults.length < results.length && (
-                  <div className="text-sm text-gray-600">
-                    Showing {filteredResults.length} of {results.length} results
-                  </div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-pulse space-y-4 w-full">
-                    <div className="h-10 bg-gray-200 rounded" />
-                    <div className="h-64 bg-gray-200 rounded" />
-                  </div>
-                </div>
-              ) : results.length === 0 ? (
-                <div className="text-center py-12 text-gray-600">
-                  No results available. Please process documents first.
-                </div>
-              ) : filteredResults.length === 0 ? (
-                <div className="text-center py-12 text-gray-600">
-                  No results match the current confidence threshold. Try lowering the filter.
-                </div>
-              ) : (
-                <ResultsTable
-                  results={filteredResults}
-                  variables={variables}
-                  documentNames={documentNames}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Results Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Extracted Data</CardTitle>
+          <CardDescription>
+            View, analyze, and export your extraction results
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Loading results...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-destructive">
+              {error}
+            </div>
+          ) : results.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg mb-2">
+                No results available yet
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Process some documents to see extraction results here
+              </p>
+              <Button
+                className="mt-4"
+                onClick={() => router.push(`/projects/${projectId}/processing`)}
+              >
+                Go to Processing
+              </Button>
+            </div>
+          ) : (
+            <ResultsDataTable results={results} variables={variables} />
+          )}
+        </CardContent>
+      </Card>
 
       {/* Summary Stats */}
-      {!isLoading && results.length > 0 && (
+      {!isLoading && !error && results.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <Card>
             <CardHeader className="pb-3">

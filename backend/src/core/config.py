@@ -1,7 +1,7 @@
 """
 Configuration settings for the backend application.
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # LLM Provider
-    OPENAI_API_KEY: str
+    # LLM Provider (optional for basic testing)
+    OPENAI_API_KEY: Optional[str] = None
 
     # API Configuration
     API_HOST: str = "0.0.0.0"

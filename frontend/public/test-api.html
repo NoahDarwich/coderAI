@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button:hover { background: #0051cc; }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+        }
+        .error { color: #e00; }
+        .success { color: #0a0; }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 API Diagnostics</h1>
+
+        <div class="section">
+            <h2>Test Backend Connection</h2>
+            <button onclick="testBackend()">Test Backend Health</button>
+            <pre id="backend-result"></pre>
+        </div>
+
+        <div class="section">
+            <h2>Test Project Variables</h2>
+            <input type="text" id="project-id" placeholder="Enter Project ID" style="width: 300px;">
+            <button onclick="testVariables()">Get Variables</button>
+            <pre id="variables-result"></pre>
+        </div>
+
+        <div class="section">
+            <h2>Test Documents</h2>
+            <button onclick="testDocuments()">Get Documents (use project ID above)</button>
+            <pre id="documents-result"></pre>
+        </div>
+
+        <div class="section">
+            <h2>List All Projects</h2>
+            <button onclick="listProjects()">List Projects</button>
+            <pre id="projects-result"></pre>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function testBackend() {
+            const result = document.getElementById('backend-result');
+            result.textContent = 'Testing...';
+
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                result.className = 'success';
+                result.textContent = `✅ Backend is healthy!\n\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                result.className = 'error';
+                result.textContent = `❌ Backend connection failed!\n\nError: ${error.message}\n\nMake sure backend is running on http://localhost:8000`;
+            }
+        }
+
+        async function testVariables() {
+            const projectId = document.getElementById('project-id').value;
+            const result = document.getElementById('variables-result');
+
+            if (!projectId) {
+                result.className = 'error';
+                result.textContent = '❌ Please enter a Project ID';
+                return;
+            }
+
+            result.textContent = 'Fetching variables...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/variables`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                result.className = 'success';
+                result.textContent = `✅ Found ${data.length} variables\n\n${JSON.stringify(data, null, 2)}`;
+
+                if (data.length === 0) {
+                    result.textContent += '\n\n⚠️ No variables found! You need to create variables first.';
+                }
+            } catch (error) {
+                result.className = 'error';
+                result.textContent = `❌ Failed to fetch variables\n\nError: ${error.message}`;
+            }
+        }
+
+        async function testDocuments() {
+            const projectId = document.getElementById('project-id').value;
+            const result = document.getElementById('documents-result');
+
+            if (!projectId) {
+                result.className = 'error';
+                result.textContent = '❌ Please enter a Project ID';
+                return;
+            }
+
+            result.textContent = 'Fetching documents...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/documents`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                result.className = 'success';
+                result.textContent = `✅ Found ${data.length} documents\n\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                result.className = 'error';
+                result.textContent = `❌ Failed to fetch documents\n\nError: ${error.message}`;
+            }
+        }
+
+        async function listProjects() {
+            const result = document.getElementById('projects-result');
+            result.textContent = 'Fetching projects...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/projects`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                result.className = 'success';
+                result.textContent = `✅ Found ${data.length} projects\n\n${JSON.stringify(data, null, 2)}`;
+
+                if (data.length > 0) {
+                    result.textContent += '\n\n💡 Copy a project ID above and paste it in the "Test Project Variables" section';
+                }
+            } catch (error) {
+                result.className = 'error';
+                result.textContent = `❌ Failed to fetch projects\n\nError: ${error.message}`;
+            }
+        }
+
+        // Auto-test backend on load
+        window.onload = () => {
+            testBackend();
+        };
+    </script>
+</body>
+</html>

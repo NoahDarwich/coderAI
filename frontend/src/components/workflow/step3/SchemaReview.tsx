@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Plus, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -17,8 +17,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { SchemaTable } from './SchemaTable';
 import { useSchemaWizardStore } from '@/store/schemaWizardStore';
+import { useSaveSchema } from '@/lib/api/schema';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2 } from 'lucide-react';
+import type { SchemaVariable } from '@/lib/types/api';
 
 interface SchemaReviewProps {
   projectId: string;
@@ -27,12 +29,14 @@ interface SchemaReviewProps {
 }
 
 export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaReviewProps) {
-  const { variables, deleteVariable, reorderVariables } = useSchemaWizardStore();
+  const { variables, deleteVariable, reorderVariables, clearDraft } = useSchemaWizardStore();
+  const saveSchema = useSaveSchema(projectId);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [variableToDelete, setVariableToDelete] = useState<number | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleEdit = (index: number) => {
+  const handleEdit = () => {
     // Navigate back to wizard at the specific variable
     onBackToWizard();
   };
@@ -56,9 +60,50 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
     }
   };
 
-  const handleConfirmSchema = () => {
-    setConfirmDialogOpen(false);
-    onConfirm();
+  const handleConfirmSchema = async () => {
+    setIsSaving(true);
+
+    try {
+      // Transform variables to the format expected by the API
+      const schemaVariables: SchemaVariable[] = variables.map((variable) => ({
+        id: variable.id.startsWith('var-temp-') ? `var-${Math.random().toString(36).substring(2, 9)}` : variable.id,
+        name: variable.name,
+        type: variable.type === 'text' ? 'custom' :
+              variable.type === 'number' ? 'custom' :
+              variable.type === 'date' ? 'date' :
+              variable.type === 'category' ? 'classification' :
+              variable.type === 'boolean' ? 'custom' : 'custom',
+        description: variable.instructions,
+        prompt: variable.instructions,
+        ...(variable.type === 'category' && variable.classificationRules ? {
+          categories: variable.classificationRules,
+        } : {}),
+      }));
+
+      // Save schema to backend
+      await saveSchema.mutateAsync({
+        conversationHistory: [],
+        variables: schemaVariables,
+        prompts: {},
+      });
+
+      // Clear the draft from local storage
+      clearDraft();
+
+      toast.success('Schema saved successfully!', {
+        description: `${variables.length} variable${variables.length > 1 ? 's' : ''} saved to the backend.`,
+      });
+
+      setConfirmDialogOpen(false);
+      setIsSaving(false);
+      onConfirm();
+    } catch (error) {
+      console.error('Failed to save schema:', error);
+      toast.error('Failed to save schema', {
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+      });
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -175,7 +220,7 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Variable</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{variableToDelete !== null ? variables[variableToDelete]?.name : ''}"?
+              Are you sure you want to delete &ldquo;{variableToDelete !== null ? variables[variableToDelete]?.name : ''}&rdquo;?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -192,7 +237,7 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
       </AlertDialog>
 
       {/* Confirm Schema Dialog */}
-      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+      <AlertDialog open={confirmDialogOpen} onOpenChange={(open) => !isSaving && setConfirmDialogOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Schema</AlertDialogTitle>
@@ -202,9 +247,16 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Review Again</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmSchema}>
-              Confirm and Continue
+            <AlertDialogCancel disabled={isSaving}>Review Again</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmSchema} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving Schema...
+                </>
+              ) : (
+                'Confirm and Continue'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

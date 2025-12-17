@@ -54,7 +54,7 @@ class PromptInfo(BaseModel):
     """Schema for prompt information."""
     version: int
     prompt_text: str
-    model_config: Dict[str, Any]
+    llm_config: Dict[str, Any]  # Renamed from model_config to avoid Pydantic reserved word
 
 
 class VariableDetail(Variable):

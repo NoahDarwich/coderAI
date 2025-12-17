@@ -1,41 +1,41 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProjectSetupForm } from '@/components/projects/ProjectSetupForm';
-import { useProjectStore } from '@/store/projectStore';
+import { useCreateProject } from '@/lib/api/projects';
 import { ProjectFormData } from '@/lib/validations';
-import { Project } from '@/types';
-import { generateId } from '@/lib/utils';
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const { addProject } = useProjectStore();
+  const createProject = useCreateProject();
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (data: ProjectFormData) => {
     console.log('Form submitted with data:', data);
+    setError(null);
 
-    const newProject: Project = {
-      id: generateId(),
-      name: data.name,
-      scale: data.scale,
-      status: 'setup',
-      documentCount: 0,
-      schemaComplete: false,
-      processingComplete: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      // Create project via backend API
+      // Note: Form only has name and scale, so we use name as description
+      const newProject = await createProject.mutateAsync({
+        name: data.name,
+        description: `${data.scale === 'small' ? 'Small-scale' : 'Large-scale'} research project`,
+      });
 
-    console.log('Creating project:', newProject);
-    addProject(newProject);
+      console.log('Project created successfully:', newProject);
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    console.log('Navigating to:', `/projects/${newProject.id}`);
-    router.push(`/projects/${newProject.id}`);
+      // Navigate to the new project documents page
+      router.push(`/projects/${newProject.id}/documents`);
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to create project: ${errorMessage}`);
+    }
   };
 
   return (
@@ -58,6 +58,12 @@ export default function NewProjectPage() {
         </p>
       </div>
 
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Project Details</CardTitle>
@@ -66,7 +72,14 @@ export default function NewProjectPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ProjectSetupForm onSubmit={handleSubmit} />
+          {createProject.isPending ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Creating project...</span>
+            </div>
+          ) : (
+            <ProjectSetupForm onSubmit={handleSubmit} />
+          )}
         </CardContent>
       </Card>
     </div>

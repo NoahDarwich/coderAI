@@ -7,129 +7,41 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SampleTesting } from '@/components/workflow/step4/SampleTesting';
 import { FullProcessing } from '@/components/workflow/step4/FullProcessing';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
-import { useProjectStore } from '@/store/projectStore';
-import { useSchemaWizardStore } from '@/store/schemaWizardStore';
-import { ProcessingJob, ProcessingLog } from '@/types';
-import { generateId, sleep } from '@/lib/utils';
-import { mockDocuments } from '@/mocks/mockDocuments';
+import { useDocuments } from '@/lib/api/documents';
+import { useVariables } from '@/lib/api/schema';
 
 export default function ProcessPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const { updateProject } = useProjectStore();
-  const { variables } = useSchemaWizardStore();
 
   const [mounted, setMounted] = useState(false);
-  const [job, setJob] = useState<ProcessingJob | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState<'sample' | 'full'>('sample');
   const [sampleApproved, setSampleApproved] = useState(false);
 
-  // Get total documents count
-  const projectDocs = mockDocuments.filter((doc) => doc.projectId === projectId);
-  const totalDocuments = projectDocs.length || 10;
+  // Fetch documents and variables from API
+  const { data: documents = [], isLoading: documentsLoading } = useDocuments(projectId);
+  const { data: variables = [], isLoading: variablesLoading } = useVariables(projectId);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('=== PROCESS PAGE DEBUG ===');
+    console.log('Project ID:', projectId);
+    console.log('Variables loading:', variablesLoading);
+    console.log('Variables data:', variables);
+    console.log('Variables count:', variables?.length);
+    console.log('Documents count:', documents?.length);
+    console.log('========================');
+  }, [projectId, variables, variablesLoading, documents]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Simulate processing
-  const startProcessing = async () => {
-    setIsProcessing(true);
-
-    // Get documents for this project
-    const projectDocs = mockDocuments.filter((doc) => doc.projectId === projectId);
-    const totalDocs = projectDocs.length || 10; // Default to 10 if no documents
-
-    const newJob: ProcessingJob = {
-      id: generateId(),
-      projectId,
-      type: 'full',
-      status: 'processing',
-      progress: 0,
-      totalDocuments: totalDocs,
-      processedDocuments: 0,
-      startedAt: new Date().toISOString(),
-      logs: [
-        {
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: `Processing started for ${totalDocs} documents`,
-        },
-      ],
-    };
-
-    setJob(newJob);
-
-    // Simulate processing each document
-    for (let i = 0; i < totalDocs; i++) {
-      await sleep(800); // Simulate processing time
-
-      const progress = Math.round(((i + 1) / totalDocs) * 100);
-      const docName = projectDocs[i]?.fileName || `document_${i + 1}.pdf`;
-
-      setJob((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          progress,
-          processedDocuments: i + 1,
-          logs: [
-            ...prev.logs,
-            {
-              timestamp: new Date().toISOString(),
-              level: 'info',
-              message: `Processing document: ${docName}`,
-              documentId: projectDocs[i]?.id,
-            },
-          ],
-        };
-      });
-    }
-
-    // Mark as completed
-    await sleep(500);
-    setJob((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        status: 'completed',
-        completedAt: new Date().toISOString(),
-        logs: [
-          ...prev.logs,
-          {
-            timestamp: new Date().toISOString(),
-            level: 'info',
-            message: 'Processing completed successfully',
-          },
-        ],
-      };
-    });
-
-    setIsProcessing(false);
-
-    // Update project status
-    updateProject(projectId, {
-      status: 'complete',
-      processingComplete: true,
-    });
-
-    // Show success toast notification
-    toast.success('Processing Complete!', {
-      description: `Successfully processed ${totalDocs} documents. View results now.`,
-      action: {
-        label: 'View Results',
-        onClick: () => router.push(`/projects/${projectId}/results`),
-      },
-    });
-  };
 
   const handleSampleApprove = () => {
     setSampleApproved(true);
@@ -147,6 +59,9 @@ export default function ProcessPage() {
   if (!mounted) {
     return null;
   }
+
+  const isLoading = documentsLoading || variablesLoading;
+  const totalDocuments = documents.length;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -174,36 +89,41 @@ export default function ProcessPage() {
         <WorkflowProgress currentStep={4} />
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'sample' | 'full')} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="sample">
-            Phase A: Sample Testing
-          </TabsTrigger>
-          <TabsTrigger value="full" disabled={!sampleApproved}>
-            Phase B: Full Processing
-          </TabsTrigger>
-        </TabsList>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-gray-500">Loading documents and variables...</div>
+        </div>
+      ) : (
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'sample' | 'full')} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="sample">
+              Phase A: Sample Testing
+            </TabsTrigger>
+            <TabsTrigger value="full" disabled={!sampleApproved}>
+              Phase B: Full Processing
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="sample">
-          <SampleTesting
-            projectId={projectId}
-            variables={variables}
-            totalDocuments={totalDocuments}
-            onApprove={handleSampleApprove}
-            onRefineSchema={handleRefineSchema}
-          />
-        </TabsContent>
+          <TabsContent value="sample">
+            <SampleTesting
+              projectId={projectId}
+              documents={documents}
+              variables={variables}
+              totalDocuments={totalDocuments}
+              onApprove={handleSampleApprove}
+              onRefineSchema={handleRefineSchema}
+            />
+          </TabsContent>
 
-        <TabsContent value="full">
-          <FullProcessing
-            job={job}
-            onStart={startProcessing}
-            onContinue={handleContinue}
-            isProcessing={isProcessing}
-            canStart={!job}
-          />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="full">
+            <FullProcessing
+              projectId={projectId}
+              documents={documents}
+              onContinue={handleContinue}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

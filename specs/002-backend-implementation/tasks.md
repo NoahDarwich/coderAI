@@ -93,19 +93,19 @@
 
 **Tasks**:
 
-- [ ] T027 [US1] Create backend/src/schemas/project.py with ProjectCreate, ProjectUpdate, Project, ProjectDetail Pydantic schemas
-- [ ] T028 [US1] Create backend/src/schemas/variable.py with VariableCreate, VariableUpdate, Variable, VariableDetail Pydantic schemas
-- [ ] T029 [US1] Create backend/src/api/routes/projects.py with POST /api/v1/projects endpoint (create project)
-- [ ] T030 [US1] Implement GET /api/v1/projects endpoint (list projects with pagination) in backend/src/api/routes/projects.py
-- [ ] T031 [US1] Implement GET /api/v1/projects/{projectId} endpoint (get project details) in backend/src/api/routes/projects.py
-- [ ] T032 [US1] Implement PUT /api/v1/projects/{projectId} endpoint (update project) in backend/src/api/routes/projects.py
-- [ ] T033 [US1] Implement DELETE /api/v1/projects/{projectId} endpoint (delete project) in backend/src/api/routes/projects.py
-- [ ] T034 [US1] Create backend/src/api/routes/variables.py with GET /api/v1/projects/{projectId}/variables endpoint (list variables)
-- [ ] T035 [US1] Implement POST /api/v1/projects/{projectId}/variables endpoint (create variable) in backend/src/api/routes/variables.py
-- [ ] T036 [US1] Implement GET /api/v1/variables/{variableId} endpoint (get variable details) in backend/src/api/routes/variables.py
-- [ ] T037 [US1] Implement PUT /api/v1/variables/{variableId} endpoint (update variable) in backend/src/api/routes/variables.py
-- [ ] T038 [US1] Implement DELETE /api/v1/variables/{variableId} endpoint (delete variable) in backend/src/api/routes/variables.py
-- [ ] T039 [US1] Create backend/src/main.py with FastAPI app initialization, include routers, configure CORS
+- [X] T027 [US1] Create backend/src/schemas/project.py with ProjectCreate, ProjectUpdate, Project, ProjectDetail Pydantic schemas
+- [X] T028 [US1] Create backend/src/schemas/variable.py with VariableCreate, VariableUpdate, Variable, VariableDetail Pydantic schemas
+- [X] T029 [US1] Create backend/src/api/routes/projects.py with POST /api/v1/projects endpoint (create project)
+- [X] T030 [US1] Implement GET /api/v1/projects endpoint (list projects with pagination) in backend/src/api/routes/projects.py
+- [X] T031 [US1] Implement GET /api/v1/projects/{projectId} endpoint (get project details) in backend/src/api/routes/projects.py
+- [X] T032 [US1] Implement PUT /api/v1/projects/{projectId} endpoint (update project) in backend/src/api/routes/projects.py
+- [X] T033 [US1] Implement DELETE /api/v1/projects/{projectId} endpoint (delete project) in backend/src/api/routes/projects.py
+- [X] T034 [US1] Create backend/src/api/routes/variables.py with GET /api/v1/projects/{projectId}/variables endpoint (list variables)
+- [X] T035 [US1] Implement POST /api/v1/projects/{projectId}/variables endpoint (create variable) in backend/src/api/routes/variables.py
+- [X] T036 [US1] Implement GET /api/v1/variables/{variableId} endpoint (get variable details) in backend/src/api/routes/variables.py
+- [X] T037 [US1] Implement PUT /api/v1/variables/{variableId} endpoint (update variable) in backend/src/api/routes/variables.py
+- [X] T038 [US1] Implement DELETE /api/v1/variables/{variableId} endpoint (delete variable) in backend/src/api/routes/variables.py
+- [X] T039 [US1] Create backend/src/main.py with FastAPI app initialization, include routers, configure CORS
 
 **Acceptance Criteria**:
 1. ✅ Frontend can create project with name and scale, backend returns project with UUID
@@ -129,16 +129,16 @@
 
 **Tasks**:
 
-- [ ] T040 [US2] Create backend/src/services/prompt_generator.py with generate_prompt(variable, project_context) function
-- [ ] T041 [US2] Implement prompt template for TEXT variable type in backend/src/services/prompt_generator.py
-- [ ] T042 [US2] Implement prompt template for CATEGORY variable type with classification rules in backend/src/services/prompt_generator.py
-- [ ] T043 [US2] Implement prompt template for NUMBER variable type in backend/src/services/prompt_generator.py
-- [ ] T044 [US2] Implement prompt template for DATE variable type in backend/src/services/prompt_generator.py
-- [ ] T045 [US2] Implement prompt template for BOOLEAN variable type in backend/src/services/prompt_generator.py
-- [ ] T046 [US2] Implement model configuration logic (temperature=0.2 for precision, max_tokens based on type) in backend/src/services/prompt_generator.py
-- [ ] T047 [US2] Update POST /api/v1/projects/{projectId}/variables endpoint to auto-generate prompt on variable creation in backend/src/api/routes/variables.py
-- [ ] T048 [US2] Update PUT /api/v1/variables/{variableId} endpoint to regenerate prompt and increment version on variable update in backend/src/api/routes/variables.py
-- [ ] T049 [US2] Update GET /api/v1/variables/{variableId} endpoint to include current prompt in response in backend/src/api/routes/variables.py
+- [X] T040 [US2] Create backend/src/services/prompt_generator.py with generate_prompt(variable, project_context) function
+- [X] T041 [US2] Implement prompt template for TEXT variable type in backend/src/services/prompt_generator.py
+- [X] T042 [US2] Implement prompt template for CATEGORY variable type with classification rules in backend/src/services/prompt_generator.py
+- [X] T043 [US2] Implement prompt template for NUMBER variable type in backend/src/services/prompt_generator.py
+- [X] T044 [US2] Implement prompt template for DATE variable type in backend/src/services/prompt_generator.py
+- [X] T045 [US2] Implement prompt template for BOOLEAN variable type in backend/src/services/prompt_generator.py
+- [X] T046 [US2] Implement model configuration logic (temperature=0.2 for precision, max_tokens based on type) in backend/src/services/prompt_generator.py
+- [X] T047 [US2] Update POST /api/v1/projects/{projectId}/variables endpoint to auto-generate prompt on variable creation in backend/src/api/routes/variables.py
+- [X] T048 [US2] Update PUT /api/v1/variables/{variableId} endpoint to regenerate prompt and increment version on variable update in backend/src/api/routes/variables.py
+- [X] T049 [US2] Update GET /api/v1/variables/{variableId} endpoint to include current prompt in response in backend/src/api/routes/variables.py
 
 **Acceptance Criteria**:
 1. ✅ Text variable generates prompt with project context and extraction format
@@ -162,18 +162,18 @@
 
 **Tasks**:
 
-- [ ] T050 [US3] Create backend/src/schemas/document.py with DocumentCreate, Document, DocumentDetail Pydantic schemas
-- [ ] T051 [US3] Create backend/src/schemas/processing.py with JobCreate, ProcessingJob, JobDetail, Extraction Pydantic schemas
-- [ ] T052 [US3] Create backend/src/services/document_processor.py with parse_pdf(file), parse_docx(file), parse_txt(file) functions using PyMuPDF and python-docx
-- [ ] T053 [US3] Create backend/src/api/routes/documents.py with POST /api/v1/projects/{projectId}/documents endpoint (upload document with multipart/form-data)
-- [ ] T054 [US3] Implement GET /api/v1/projects/{projectId}/documents endpoint (list documents) in backend/src/api/routes/documents.py
-- [ ] T055 [US3] Implement DELETE /api/v1/documents/{documentId} endpoint (delete document) in backend/src/api/routes/documents.py
-- [ ] T056 [US3] Create backend/src/services/llm_client.py with LangChain ChatOpenAI integration and PydanticOutputParser for structured extraction
-- [ ] T057 [US3] Implement retry logic with exponential backoff (max 3 retries) in backend/src/services/llm_client.py
-- [ ] T058 [US3] Create backend/src/services/extraction_service.py with extract_value(document, variable, prompt) function that calls LLM
-- [ ] T059 [US3] Create backend/src/api/routes/processing.py with POST /api/v1/projects/{projectId}/jobs endpoint (create processing job for sample)
-- [ ] T060 [US3] Implement job processing logic in backend/src/services/job_manager.py to process sample documents synchronously (MVP: use FastAPI BackgroundTasks)
-- [ ] T061 [US3] Create backend/src/schemas/feedback.py with FeedbackCreate, Feedback Pydantic schemas and POST /api/v1/extractions/{extractionId}/feedback endpoint in backend/src/api/routes/processing.py
+- [X] T050 [US3] Create backend/src/schemas/document.py with DocumentCreate, Document, DocumentDetail Pydantic schemas
+- [X] T051 [US3] Create backend/src/schemas/processing.py with JobCreate, ProcessingJob, JobDetail, Extraction Pydantic schemas
+- [X] T052 [US3] Create backend/src/services/document_processor.py with parse_pdf(file), parse_docx(file), parse_txt(file) functions using PyMuPDF and python-docx
+- [X] T053 [US3] Create backend/src/api/routes/documents.py with POST /api/v1/projects/{projectId}/documents endpoint (upload document with multipart/form-data)
+- [X] T054 [US3] Implement GET /api/v1/projects/{projectId}/documents endpoint (list documents) in backend/src/api/routes/documents.py
+- [X] T055 [US3] Implement DELETE /api/v1/documents/{documentId} endpoint (delete document) in backend/src/api/routes/documents.py
+- [X] T056 [US3] Create backend/src/services/llm_client.py with LangChain ChatOpenAI integration and PydanticOutputParser for structured extraction
+- [X] T057 [US3] Implement retry logic with exponential backoff (max 3 retries) in backend/src/services/llm_client.py
+- [X] T058 [US3] Create backend/src/services/extraction_service.py with extract_value(document, variable, prompt) function that calls LLM
+- [X] T059 [US3] Create backend/src/api/routes/processing.py with POST /api/v1/projects/{projectId}/jobs endpoint (create processing job for sample)
+- [X] T060 [US3] Implement job processing logic in backend/src/services/job_manager.py to process sample documents synchronously (MVP: use FastAPI BackgroundTasks)
+- [X] T061 [US3] Create backend/src/schemas/feedback.py with FeedbackCreate, Feedback Pydantic schemas and POST /api/v1/extractions/{extractionId}/feedback endpoint in backend/src/api/routes/processing.py
 
 **Acceptance Criteria**:
 1. ✅ Sample job created with 10 document IDs
@@ -198,17 +198,17 @@
 
 **Tasks**:
 
-- [ ] T062 [US4] Implement GET /api/v1/projects/{projectId}/jobs endpoint (list jobs) in backend/src/api/routes/processing.py
-- [ ] T063 [US4] Implement GET /api/v1/jobs/{jobId} endpoint (get job status with progress and recent logs) in backend/src/api/routes/processing.py
-- [ ] T064 [US4] Implement DELETE /api/v1/jobs/{jobId} endpoint (cancel job) in backend/src/api/routes/processing.py
-- [ ] T065 [US4] Update POST /api/v1/projects/{projectId}/jobs endpoint to support FULL job type (all documents) in backend/src/api/routes/processing.py
-- [ ] T066 [US4] Implement progress tracking in backend/src/services/job_manager.py (update job.progress field as documents complete)
-- [ ] T067 [US4] Implement error logging in backend/src/services/job_manager.py (create ProcessingLog entries for errors)
-- [ ] T068 [US4] Implement error resilience in backend/src/services/job_manager.py (continue processing after individual failures, mark failed documents)
-- [ ] T069 [US4] Implement job cancellation logic in backend/src/services/job_manager.py (set status=CANCELLED, stop processing)
-- [ ] T070 [US4] Update job processing to be asynchronous using FastAPI BackgroundTasks in backend/src/services/job_manager.py
-- [ ] T071 [US4] Implement GET /api/v1/jobs/{jobId}/results endpoint (return extractions with optional minConfidence filter) in backend/src/api/routes/processing.py
-- [ ] T072 [US4] Add job status transition validation (PENDING → PROCESSING → COMPLETE/FAILED) in backend/src/models/processing_job.py
+- [X] T062 [US4] Implement GET /api/v1/projects/{projectId}/jobs endpoint (list jobs) in backend/src/api/routes/processing.py
+- [X] T063 [US4] Implement GET /api/v1/jobs/{jobId} endpoint (get job status with progress and recent logs) in backend/src/api/routes/processing.py
+- [X] T064 [US4] Implement DELETE /api/v1/jobs/{jobId} endpoint (cancel job) in backend/src/api/routes/processing.py
+- [X] T065 [US4] Update POST /api/v1/projects/{projectId}/jobs endpoint to support FULL job type (all documents) in backend/src/api/routes/processing.py
+- [X] T066 [US4] Implement progress tracking in backend/src/services/job_manager.py (update job.progress field as documents complete)
+- [X] T067 [US4] Implement error logging in backend/src/services/job_manager.py (create ProcessingLog entries for errors)
+- [X] T068 [US4] Implement error resilience in backend/src/services/job_manager.py (continue processing after individual failures, mark failed documents)
+- [X] T069 [US4] Implement job cancellation logic in backend/src/services/job_manager.py (set status=CANCELLED, stop processing)
+- [X] T070 [US4] Update job processing to be asynchronous using FastAPI BackgroundTasks in backend/src/services/job_manager.py
+- [X] T071 [US4] Implement GET /api/v1/jobs/{jobId}/results endpoint (return extractions with optional minConfidence filter) in backend/src/api/routes/processing.py
+- [X] T072 [US4] Add job status transition validation (PENDING → PROCESSING → COMPLETE/FAILED) in backend/src/models/processing_job.py
 
 **Acceptance Criteria**:
 1. ✅ Full processing job created with status PROCESSING
@@ -233,15 +233,15 @@
 
 **Tasks**:
 
-- [ ] T073 [US5] Create backend/src/schemas/export.py with ExportConfig Pydantic schema (format, includeConfidence, includeSourceText, minConfidence)
-- [ ] T074 [US5] Create backend/src/services/export_service.py with aggregate_extractions(project_id) function using pandas
-- [ ] T075 [US5] Implement CSV wide format export (1 row per document, columns = variables) in backend/src/services/export_service.py
-- [ ] T076 [US5] Implement CSV long format export (1 row per extraction) in backend/src/services/export_service.py
-- [ ] T077 [US5] Implement Excel export using openpyxl in backend/src/services/export_service.py
-- [ ] T078 [US5] Implement JSON export in backend/src/services/export_service.py
-- [ ] T079 [US5] Implement optional confidence scores inclusion in backend/src/services/export_service.py
-- [ ] T080 [US5] Implement optional source text inclusion in backend/src/services/export_service.py
-- [ ] T081 [US5] Create backend/src/api/routes/exports.py with POST /api/v1/projects/{projectId}/export endpoint (generate export file, return download URL)
+- [X] T073 [US5] Create backend/src/schemas/export.py with ExportConfig Pydantic schema (format, includeConfidence, includeSourceText, minConfidence)
+- [X] T074 [US5] Create backend/src/services/export_service.py with aggregate_extractions(project_id) function using pandas
+- [X] T075 [US5] Implement CSV wide format export (1 row per document, columns = variables) in backend/src/services/export_service.py
+- [X] T076 [US5] Implement CSV long format export (1 row per extraction) in backend/src/services/export_service.py
+- [X] T077 [US5] Implement Excel export using openpyxl in backend/src/services/export_service.py
+- [X] T078 [US5] Implement JSON export in backend/src/services/export_service.py
+- [X] T079 [US5] Implement optional confidence scores inclusion in backend/src/services/export_service.py
+- [X] T080 [US5] Implement optional source text inclusion in backend/src/services/export_service.py
+- [X] T081 [US5] Create backend/src/api/routes/exports.py with POST /api/v1/projects/{projectId}/export endpoint (generate export file, return download URL)
 
 **Acceptance Criteria**:
 1. ✅ Backend returns dataset with columns=variables, rows=documents
@@ -262,14 +262,14 @@
 
 **Tasks**:
 
-- [ ] T082 [P] Implement request validation for all endpoints using Pydantic in backend/src/schemas/
-- [ ] T083 [P] Implement RFC 7807 error format for all API errors in backend/src/api/middleware.py
-- [ ] T084 [P] Add database indexes for frequently queried fields per data-model.md in Alembic migration
-- [ ] T085 [P] Create backend/tests/conftest.py with pytest fixtures (test_db, mock_llm, sample_project)
-- [ ] T086 [P] Write API tests for project and variable CRUD in backend/tests/api/test_projects.py and backend/tests/api/test_variables.py
-- [ ] T087 [P] Write service tests for prompt generation in backend/tests/services/test_prompt_generator.py
-- [ ] T088 Run full test suite with pytest and verify >80% coverage in backend/
-- [ ] T089 Create deployment documentation in backend/README.md with Docker setup and Railway/Render deployment instructions
+- [X] T082 [P] Implement request validation for all endpoints using Pydantic in backend/src/schemas/
+- [X] T083 [P] Implement RFC 7807 error format for all API errors in backend/src/api/middleware.py
+- [X] T084 [P] Add database indexes for frequently queried fields per data-model.md in Alembic migration
+- [X] T085 [P] Create backend/tests/conftest.py with pytest fixtures (test_db, mock_llm, sample_project)
+- [X] T086 [P] Write API tests for project and variable CRUD in backend/tests/api/test_projects.py and backend/tests/api/test_variables.py
+- [X] T087 [P] Write service tests for prompt generation in backend/tests/services/test_prompt_generator.py
+- [X] T088 Run full test suite with pytest and verify >80% coverage in backend/
+- [X] T089 Create deployment documentation in backend/README.md with Docker setup and Railway/Render deployment instructions
 
 **Validation**: Tests pass, coverage >80%, API documentation complete, deployment ready
 

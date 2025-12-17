@@ -49,5 +49,49 @@ class ProcessingJob(Base):
     extractions = relationship("Extraction", back_populates="job", cascade="all, delete-orphan")
     processing_logs = relationship("ProcessingLog", back_populates="job", cascade="all, delete-orphan")
 
+    # Valid state transitions
+    _VALID_TRANSITIONS = {
+        JobStatus.PENDING: [JobStatus.PROCESSING, JobStatus.CANCELLED],
+        JobStatus.PROCESSING: [JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED],
+        JobStatus.COMPLETE: [],  # Terminal state
+        JobStatus.FAILED: [],    # Terminal state
+        JobStatus.CANCELLED: [], # Terminal state
+    }
+
+    def can_transition_to(self, new_status: JobStatus) -> bool:
+        """
+        Check if the job can transition to the given status.
+
+        Args:
+            new_status: The target status
+
+        Returns:
+            True if transition is valid, False otherwise
+        """
+        return new_status in self._VALID_TRANSITIONS.get(self.status, [])
+
+    def transition_to(self, new_status: JobStatus) -> None:
+        """
+        Transition the job to a new status with validation.
+
+        Args:
+            new_status: The target status
+
+        Raises:
+            ValueError: If the transition is invalid
+        """
+        if not self.can_transition_to(new_status):
+            raise ValueError(
+                f"Invalid status transition from {self.status.value} to {new_status.value}"
+            )
+        self.status = new_status
+
+        # Update timestamps
+        if new_status == JobStatus.PROCESSING and not self.started_at:
+            self.started_at = datetime.utcnow()
+        elif new_status in [JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED]:
+            if not self.completed_at:
+                self.completed_at = datetime.utcnow()
+
     def __repr__(self) -> str:
         return f"<ProcessingJob(id={self.id}, type={self.job_type}, status={self.status})>"
