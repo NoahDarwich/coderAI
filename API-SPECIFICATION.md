@@ -1,9 +1,10 @@
 # API Specification - Research Automation Tool
 
-**Version:** 1.0
+**Version:** 1.1
 **Base URL:** `https://api.yourapp.com/v1`
 **Authentication:** JWT Bearer Token
-**Last Updated:** November 18, 2025
+**Last Updated:** February 9, 2026
+**Pipeline Reference:** [ai_agent_reference.md](ai_agent_reference.md)
 
 ---
 
@@ -215,12 +216,17 @@ Authorization: Bearer {token}
 
 ### Upload Documents
 
+Supports all common formats: PDF, DOCX, TXT, CSV, JSON, Parquet.
+For tabular formats (CSV, JSON, Parquet), each row can become a separate document (bulk ingestion).
+
 ```http
 POST /projects/{project_id}/documents
 Authorization: Bearer {token}
 Content-Type: multipart/form-data
 
 files: [File, File, ...]
+text_column: "content"          # For CSV/JSON/Parquet: which column contains document text
+metadata_columns: ["date", "source"]  # Optional: columns to store as metadata
 ```
 
 **Response (201 Created):**
@@ -236,6 +242,7 @@ files: [File, File, ...]
       "uploaded_at": "2025-01-15T10:30:00Z"
     }
   ],
+  "bulk_created": 0,
   "failed": []
 }
 ```
@@ -742,7 +749,9 @@ Authorization: Bearer {token}
 
 ## Export
 
-### Export to CSV
+### Export to CSV or Excel
+
+Supports CSV and Excel (.xlsx) export formats with filtering and metadata.
 
 ```http
 POST /projects/{project_id}/export
@@ -754,6 +763,8 @@ Content-Type: application/json
   "structure": "wide",
   "include_confidence": true,
   "include_source_text": false,
+  "include_codebook": true,
+  "include_quality_metrics": true,
   "filters": {
     "confidence_min": 0.7,
     "exclude_flagged": false
@@ -761,8 +772,12 @@ Content-Type: application/json
 }
 ```
 
+**Format options:**
+- `csv` - CSV file
+- `xlsx` - Excel workbook (with separate sheets for data, codebook, and quality metrics)
+
 **Structure options:**
-- `wide` - One row per document (default)
+- `wide` - One row per unit of observation (default)
 - `long` - One row per extracted field
 
 **Response (200 OK):**
@@ -1149,7 +1164,7 @@ export interface Project {
 export interface Document {
   id: string;
   filename: string;
-  file_type: 'pdf' | 'docx' | 'txt';
+  file_type: 'pdf' | 'docx' | 'txt' | 'csv' | 'json' | 'parquet';
   size_bytes: number;
   status: 'uploaded' | 'parsed' | 'processing' | 'completed' | 'error';
   uploaded_at: string;
@@ -1222,10 +1237,25 @@ export interface Job {
 
 ---
 
+---
+
+## Architecture Notes
+
+This API implements a **user-configurable corpus processing pipeline** per [ai_agent_reference.md](ai_agent_reference.md):
+
+- **LLM Integration**: All extraction calls go through LangChain 0.3+ for multi-provider support
+- **Document Ingestion**: Supports all common formats (PDF, DOCX, TXT, CSV, JSON, Parquet)
+- **Assistant Config**: Auto-generated from variable definitions (not manually configured)
+- **Pipeline Stages**: Ingestion → Extraction → Enrichment → Post-Processing → Storage → Export
+- **Export**: CSV + Excel with optional confidence scores, source text, codebook, and quality metrics
+- **Deferred (v2)**: Duplicate detection, external API enrichment (geocoding), advanced job queue
+
+---
+
 **Document Status:** READY FOR IMPLEMENTATION
 
 **Next Steps:**
-1. Backend: Implement FastAPI endpoints following this spec
+1. Backend: Implement FastAPI endpoints following this spec and pipeline architecture
 2. Frontend: Create API client using these types
 3. Test: Verify all endpoints match specification
 4. Document: Update if any changes during implementation

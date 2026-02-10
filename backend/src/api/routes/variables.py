@@ -119,6 +119,8 @@ async def create_variable(
         type=variable_data.type,
         instructions=variable_data.instructions,
         classification_rules=variable_data.classification_rules,
+        uncertainty_handling=variable_data.uncertainty_handling.model_dump() if variable_data.uncertainty_handling else None,
+        edge_cases=variable_data.edge_cases.model_dump() if variable_data.edge_cases else None,
         order=variable_data.order,
     )
 

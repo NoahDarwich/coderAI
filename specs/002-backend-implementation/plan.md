@@ -7,13 +7,17 @@
 
 ## Summary
 
-Build a FastAPI backend service that powers the 5-step data extraction workflow by managing projects, generating LLM prompts, orchestrating batch document processing, and delivering structured datasets. The backend will integrate with the existing Next.js frontend (001-complete-user-workflow) through a RESTful API, using PostgreSQL for persistence and background job processing for scalability.
+Build a FastAPI backend service implementing a **user-configurable corpus processing pipeline** that powers the 5-step data extraction workflow. Each project defines its own domain, extraction targets, and variables. The system auto-generates LLM assistant configurations from user definitions, ingests documents in all common formats (PDF, DOCX, CSV, JSON, Parquet, TXT), processes them through LangChain-powered extraction stages, and delivers structured datasets via CSV + Excel export.
+
+**Pipeline Architecture Reference:** See [ai_agent_reference.md](/ai_agent_reference.md) for detailed pipeline stages, LLM integration, and implementation patterns.
 
 ## Technical Context
 
 **Language/Version**: Python 3.11+
-**Primary Dependencies**: FastAPI 0.100+, SQLAlchemy 2.0, Pydantic V2, LangChain 0.3+, OpenAI Python SDK
-**Storage**: PostgreSQL 15+ (primary database), Redis 7+ (job queue and caching)
+**Primary Dependencies**: FastAPI 0.100+, SQLAlchemy 2.0, Pydantic V2, LangChain 0.3+ (multi-provider LLM abstraction), OpenAI Python SDK
+**Document Processing**: PyMuPDF (PDF), python-docx (DOCX), pandas + pyarrow (CSV/JSON/Parquet), plain text
+**Export**: pandas + openpyxl (CSV + Excel with filtering and metadata)
+**Storage**: PostgreSQL 15+ (primary database), Redis 7+ (job queue — TBD)
 **Testing**: pytest with pytest-asyncio, coverage >80%
 **Target Platform**: Linux server (containerized with Docker), deployed to Railway/Render
 **Project Type**: Web backend (REST API serving existing Next.js frontend)
@@ -237,4 +241,40 @@ All constitution principles remain satisfied after design phase:
 
 ---
 
+---
+
+## Pipeline Architecture Alignment
+
+This plan aligns with the pipeline architecture defined in [ai_agent_reference.md](/ai_agent_reference.md):
+
+### Key Architecture Decisions (2026-02-09)
+
+| Decision | Choice | Impact |
+|----------|--------|--------|
+| Domain | User-configurable per project | Each project defines its own extraction pipeline |
+| LLM Provider | LangChain 0.3+ | Multi-provider abstraction (OpenAI, Anthropic, local) |
+| Document Formats | All common (PDF, DOCX, CSV, JSON, Parquet, TXT) | Expanded document_processor.py |
+| Assistant Config | Auto-generated from variables | prompt_generator.py builds configs from Variable + Project |
+| DB Layer | SQLAlchemy 2.0 + Alembic (keep existing) | No changes to existing DB infrastructure |
+| Job Queue | TBD | To be decided based on scaling needs |
+| Export | CSV + Excel with filtering | export_service.py with pandas + openpyxl |
+| Duplicate Detection | Deferred (v2) | No duplicate-related models or services in v1 |
+| External APIs | Deferred (v2) | No geocoding or external enrichment in v1 |
+
+### Pipeline Stages (per document)
+
+```
+Ingestion → Extraction → Enrichment → Post-Processing → Storage → Export
+```
+
+1. **Ingestion**: Parse document from any supported format into text
+2. **Extraction**: Identify records based on unit of observation
+3. **Enrichment**: Call LLM per variable using auto-generated configs
+4. **Post-Processing**: Validate, normalize, coerce types
+5. **Storage**: Atomic save of all extractions per document
+6. **Export**: Aggregate into CSV/Excel with metadata
+
+---
+
 **Plan Complete**: 2025-11-26
+**Plan Updated**: 2026-02-09 (pipeline architecture alignment)

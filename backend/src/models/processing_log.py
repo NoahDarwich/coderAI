@@ -37,6 +37,8 @@ class ProcessingLog(Base):
 
     # Relationships
     job = relationship("ProcessingJob", back_populates="processing_logs")
+    document = relationship("Document", back_populates="processing_logs")
+    variable = relationship("Variable", back_populates="processing_logs")
 
     def __repr__(self) -> str:
         return f"<ProcessingLog(id={self.id}, level={self.log_level}, message={self.message[:50]})>"

@@ -2,8 +2,9 @@
 
 **Feature Branch**: `002-backend-implementation`
 **Created**: 2025-11-26
-**Status**: Planning
-**Input**: backend-workflow-reference.md + USER_WORKFLOW.md
+**Updated**: 2026-02-09
+**Status**: In Progress
+**Input**: backend-workflow-reference.md + USER_WORKFLOW.md + ai_agent_reference.md
 
 ## User Workflow Context
 
@@ -13,15 +14,27 @@
 
 ## Overview
 
-The backend transforms user inputs into structured datasets through a series of processing steps. It receives project configurations and variable definitions from the frontend, generates optimized prompts for LLMs, processes documents in batches, and returns structured data for export.
+The backend implements a **user-configurable corpus processing pipeline** that transforms user inputs into structured datasets. Each project defines its own domain, extraction targets, and variables through the frontend UI. The system auto-generates LLM assistant configurations from these definitions, ingests documents in multiple formats, processes them through LangChain-powered extraction stages, and delivers structured results.
+
+**Pipeline Architecture Reference:** See [ai_agent_reference.md](/ai_agent_reference.md) for detailed pipeline stages, LLM integration patterns, and implementation patterns.
 
 **Core Responsibilities:**
 - Store and manage project metadata, schemas, and processing state
-- Generate LLM prompts from user-defined extraction instructions
-- Orchestrate batch document processing with progress tracking
-- Manage sample testing workflow with feedback loop
-- Aggregate and structure extraction results for export
+- **Auto-generate** LLM assistant configurations from user-defined variables (prompts, model configs, response schemas)
+- **Ingest documents** in all common formats (PDF, DOCX, CSV, JSON, Parquet, plain text)
+- Orchestrate the extraction pipeline: Extraction → Enrichment → Post-Processing → Storage
+- Process documents through **LangChain** for multi-provider LLM abstraction
+- Manage sample testing workflow with feedback-driven prompt refinement
+- Aggregate and structure extraction results for CSV + Excel export with quality metrics
 - Handle asynchronous processing with background jobs
+
+**Architecture Decisions:**
+- **LLM Provider**: LangChain 0.3+ (supports OpenAI, Anthropic, local models)
+- **Database**: SQLAlchemy 2.0 (async) with Alembic migrations
+- **Ingestion**: All common formats (PDF, DOCX, CSV, JSON, Parquet, TXT)
+- **Assistant Config**: Auto-generated from user variables (not manually configured)
+- **Export**: CSV + Excel with filtering, confidence scores, and codebook
+- **Deferred (v2)**: Duplicate detection, external API enrichment (geocoding, etc.), advanced job queue
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -143,12 +156,16 @@ A researcher exports processed data in desired format. The backend aggregates ex
 - **FR-004**: System MUST associate variables with projects via project ID
 - **FR-005**: System MUST retrieve complete project state (metadata + schema + processing status)
 
-**Prompt Generation**
-- **FR-006**: System MUST generate LLM prompts from variable definitions
-- **FR-007**: System MUST incorporate project context into prompts (document type, domain, language)
-- **FR-008**: System MUST specify output format in prompts (JSON schema for structured extraction)
-- **FR-009**: System MUST configure model parameters per variable (model name, temperature, max tokens)
-- **FR-010**: System MUST store generated prompts with version history
+**Prompt Generation (Auto-Generated)**
+- **FR-006**: System MUST auto-generate LLM assistant configurations from variable definitions
+- **FR-007**: System MUST incorporate full project context into prompts (document type, domain, language, unit of observation)
+- **FR-008**: System MUST specify output format in prompts (JSON schema matching variable type)
+- **FR-009**: System MUST auto-select model parameters per variable type (temperature, max_tokens based on precision needs)
+- **FR-010**: System MUST store generated prompts with version history for feedback-driven refinement
+
+**LLM Integration**
+- **FR-010a**: System MUST use LangChain 0.3+ for all LLM calls (multi-provider abstraction)
+- **FR-010b**: System MUST support OpenAI as default provider with ability to switch to Anthropic/local models
 
 **Document Processing**
 - **FR-011**: System MUST create processing jobs with configurable document subset (sample vs full)
@@ -171,13 +188,20 @@ A researcher exports processed data in desired format. The backend aggregates ex
 - **FR-024**: System MUST update prompts based on feedback and create new version
 - **FR-025**: System MUST support re-running sample with updated prompts
 
+**Document Ingestion**
+- **FR-025a**: System MUST support document upload in all common formats (PDF, DOCX, TXT, CSV, JSON, Parquet)
+- **FR-025b**: System MUST support bulk ingestion from tabular formats (CSV, JSON, Parquet) where each row becomes a document
+- **FR-025c**: System MUST extract text content from each format using appropriate parsers (PyMuPDF, python-docx, pandas)
+
 **Data Export**
-- **FR-026**: System MUST aggregate extractions into dataset structure (columns = variables, rows = documents)
-- **FR-027**: System MUST support CSV wide format export (1 row per document)
+- **FR-026**: System MUST aggregate extractions into dataset structure (columns = variables, rows = unit of observation)
+- **FR-027**: System MUST support CSV wide format export (1 row per unit of observation)
 - **FR-028**: System MUST support CSV long format export (1 row per extraction)
 - **FR-029**: System MUST optionally include confidence scores in export
 - **FR-030**: System MUST optionally include source text spans in export
 - **FR-031**: System MUST include project metadata and variable definitions (codebook) in export package
+- **FR-031a**: System MUST support Excel (.xlsx) export format
+- **FR-031b**: System MUST include quality metrics in export metadata (success rate, avg confidence)
 
 ### Non-Functional Requirements
 
@@ -216,8 +240,8 @@ A researcher exports processed data in desired format. The backend aggregates ex
 - **Prompt**: Generated LLM prompt for a variable
   - Fields: id (UUID), variable_id (FK), prompt_text (text), model_config (JSON: model, temperature, max_tokens), version (int), created_at (timestamp)
 
-- **Document**: Uploaded document
-  - Fields: id (UUID), project_id (FK), name (string), content (text), content_type (enum: PDF, DOCX, TXT), uploaded_at (timestamp)
+- **Document**: Uploaded document (supports all common formats)
+  - Fields: id (UUID), project_id (FK), name (string), content (text), content_type (enum: PDF, DOCX, TXT, CSV, JSON, PARQUET), uploaded_at (timestamp)
 
 - **ProcessingJob**: Batch processing job
   - Fields: id (UUID), project_id (FK), job_type (enum: SAMPLE, FULL), status (enum: PENDING, PROCESSING, COMPLETE, FAILED, CANCELLED), document_ids (JSON array), progress (int 0-100), started_at (timestamp), completed_at (timestamp)

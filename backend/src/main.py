@@ -7,6 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
 from src.api.routes import documents, exports, processing, projects, variables
 from src.core.config import settings
+from src.core.logging import setup_logging
+
+# Initialize logging
+setup_logging()
 
 # Create FastAPI app
 app = FastAPI(

@@ -1,41 +1,40 @@
-# Core Framework (required for basic testing)
-# Note: Using specific versions that have pre-built wheels for Python 3.13
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
+# Web Framework
+fastapi==0.100.0
+uvicorn[standard]==0.23.0
 
-# Database (required)
-sqlalchemy>=2.0.0,<2.1.0
-alembic>=1.13.0,<2.0.0
+# Database
+sqlalchemy==2.0.20
+alembic==1.12.0
+asyncpg==0.28.0  # Async PostgreSQL driver
+psycopg2-binary==2.9.7  # For Alembic offline mode (optional if pg_config not available)
 
-# Database Drivers
-# SQLite async driver (works on Python 3.13)
-aiosqlite>=0.19.0,<0.20.0
+# Data Validation & Settings
+pydantic==2.3.0
+pydantic-settings==2.0.3
 
-# PostgreSQL async driver (commented out for now, requires compilation)
-# asyncpg>=0.29.0,<0.30.0
+# LLM & AI
+langchain==0.3.0
+langchain-openai==0.2.0
+openai==1.3.0
 
-# LLM & AI (commented out for now - only needed for actual extraction)
-# openai==1.10.0
-# langchain==0.1.0
-# langchain-openai==0.0.2
+# HTTP Client
+httpx==0.24.1
 
-# Data Processing (commented out - requires compilation on Python 3.13)
-# pandas>=2.1.0,<2.3.0
-# openpyxl==3.1.2
-# numpy>=1.26.0,<2.0.0
+# Document Processing
+PyMuPDF==1.23.0
+python-docx==0.8.11
 
-# Document Processing (commented out - only needed for file upload)
-# PyMuPDF==1.23.8
-# python-docx==1.1.0
+# Data Export
+pandas==2.0.3
+openpyxl==3.1.2
 
-# HTTP & Utilities (required)
-httpx==0.26.0
+# File Upload
 python-multipart==0.0.6
-python-dotenv==1.0.0
 
-# Future: Auth & Sessions (not implemented yet)
-# python-jose[cryptography]==3.3.0
-# passlib[bcrypt]==1.7.4
-# redis==5.0.1
+# Background Jobs (optional for MVP, required for production)
+arq==0.25.0
+redis==5.0.0
+
+# Utilities
+python-dateutil==2.8.2
+python-json-logger==2.0.7

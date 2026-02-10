@@ -27,6 +27,16 @@ class Variable(Base):
     Variable model.
 
     Represents a single extraction variable defined by the user.
+
+    Attributes:
+        uncertainty_handling: JSONB config for handling uncertain extractions
+            - confidence_threshold: float (0-100, minimum confidence to accept)
+            - if_uncertain_action: str ("flag", "skip", "return_best_guess")
+            - multiple_values_action: str ("return_all", "return_first", "concatenate")
+        edge_cases: JSONB config for edge case handling
+            - missing_field_action: str ("return_null", "return_na", "flag")
+            - validation_rules: List[dict] (custom validation rules)
+            - specific_scenarios: dict (scenario-specific handling instructions)
     """
     __tablename__ = "variables"
 
@@ -36,6 +46,16 @@ class Variable(Base):
     type = Column(Enum(VariableType), nullable=False)
     instructions = Column(Text, nullable=False)
     classification_rules = Column(JSONB, nullable=True)
+    uncertainty_handling = Column(
+        JSONB,
+        nullable=True,
+        comment="Uncertainty handling config: confidence_threshold, if_uncertain_action, multiple_values_action"
+    )
+    edge_cases = Column(
+        JSONB,
+        nullable=True,
+        comment="Edge case handling: missing_field_action, validation_rules, specific_scenarios"
+    )
     order = Column(Integer, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -44,6 +64,7 @@ class Variable(Base):
     project = relationship("Project", back_populates="variables")
     prompts = relationship("Prompt", back_populates="variable", cascade="all, delete-orphan")
     extractions = relationship("Extraction", back_populates="variable")
+    processing_logs = relationship("ProcessingLog", back_populates="variable")
 
     def __repr__(self) -> str:
         return f"<Variable(id={self.id}, name={self.name}, type={self.type})>"

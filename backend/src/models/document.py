@@ -37,7 +37,8 @@ class Document(Base):
 
     # Relationships
     project = relationship("Project", back_populates="documents")
-    extractions = relationship("Extraction", back_populates="document")
+    extractions = relationship("Extraction", back_populates="document", cascade="all, delete-orphan")
+    processing_logs = relationship("ProcessingLog", back_populates="document", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, name={self.name}, content_type={self.content_type})>"

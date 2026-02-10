@@ -69,7 +69,103 @@ def _build_project_context(project: Project) -> str:
 
     context_parts.append(f"Project Scale: {project.scale.value}")
 
+    # Add unit of observation context
+    if project.unit_of_observation:
+        uoo = project.unit_of_observation
+        what_represents = uoo.get("what_each_row_represents", "document")
+        rows_per_doc = uoo.get("rows_per_document", "one")
+
+        context_parts.append(f"\n**Unit of Observation:**")
+        context_parts.append(f"Each row in the output dataset represents: {what_represents}")
+
+        if rows_per_doc == "multiple":
+            context_parts.append(f"Extraction Mode: Multiple rows per document (entity-level extraction)")
+            if "entity_identification_pattern" in uoo:
+                context_parts.append(f"Entity Pattern: {uoo['entity_identification_pattern']}")
+        else:
+            context_parts.append(f"Extraction Mode: One row per document (document-level extraction)")
+
     return "\n".join(context_parts)
+
+
+def _build_uncertainty_handling(variable: Variable) -> str:
+    """
+    Build uncertainty handling instructions from variable config.
+
+    Args:
+        variable: Variable model
+
+    Returns:
+        Uncertainty handling instructions string
+    """
+    if not variable.uncertainty_handling:
+        return ""
+
+    uh = variable.uncertainty_handling
+    confidence_threshold = uh.get("confidence_threshold", 70)
+    if_uncertain = uh.get("if_uncertain_action", "return_best_guess")
+    multiple_values = uh.get("multiple_values_action", "return_first")
+
+    instructions = ["\n**Uncertainty Handling:**"]
+    instructions.append(f"- Minimum confidence threshold: {confidence_threshold}%")
+
+    if if_uncertain == "flag":
+        instructions.append(f"- If confidence < {confidence_threshold}%: Set a flag in your response and return best guess")
+    elif if_uncertain == "skip":
+        instructions.append(f"- If confidence < {confidence_threshold}%: Set value to null and explain in source_text")
+    else:  # return_best_guess
+        instructions.append(f"- If confidence < {confidence_threshold}%: Return best guess with low confidence score")
+
+    if multiple_values == "return_all":
+        instructions.append("- If multiple values found: Return all values as a list")
+    elif multiple_values == "concatenate":
+        instructions.append("- If multiple values found: Concatenate with semicolon separator")
+    else:  # return_first
+        instructions.append("- If multiple values found: Return only the first/most relevant value")
+
+    return "\n".join(instructions)
+
+
+def _build_edge_case_handling(variable: Variable) -> str:
+    """
+    Build edge case handling instructions from variable config.
+
+    Args:
+        variable: Variable model
+
+    Returns:
+        Edge case handling instructions string
+    """
+    if not variable.edge_cases:
+        return ""
+
+    ec = variable.edge_cases
+    missing_action = ec.get("missing_field_action", "return_null")
+    validation_rules = ec.get("validation_rules", [])
+    scenarios = ec.get("specific_scenarios", {})
+
+    instructions = ["\n**Edge Case Handling:**"]
+
+    if missing_action == "return_null":
+        instructions.append("- If field missing from document: Return null with confidence 0")
+    elif missing_action == "return_na":
+        instructions.append("- If field missing from document: Return 'N/A' with confidence 0")
+    else:  # flag
+        instructions.append("- If field missing from document: Return null and note in source_text")
+
+    if validation_rules:
+        instructions.append("\n**Validation Rules:**")
+        for rule in validation_rules:
+            rule_type = rule.get("rule_type", "unknown")
+            params = rule.get("parameters", {})
+            instructions.append(f"- {rule_type}: {params}")
+
+    if scenarios:
+        instructions.append("\n**Specific Scenarios:**")
+        for scenario, instruction in scenarios.items():
+            instructions.append(f"- {scenario}: {instruction}")
+
+    return "\n".join(instructions)
 
 
 def _generate_text_prompt(variable: Variable, project_context: str) -> str:
@@ -78,6 +174,9 @@ def _generate_text_prompt(variable: Variable, project_context: str) -> str:
 
     TEXT variables extract free-form text passages (e.g., descriptions, quotes, summaries).
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided document.
 
 {project_context}
@@ -88,6 +187,8 @@ Variable Type: Text (free-form text)
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -117,6 +218,9 @@ def _generate_category_prompt(variable: Variable, project_context: str) -> str:
 
     CATEGORY variables classify text into predefined categories.
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     # Extract classification rules
     rules = variable.classification_rules or {}
     categories = rules.get("categories", [])
@@ -140,6 +244,8 @@ Variable Type: Category (classification)
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Available Categories:**
 {categories_list}{other_option}
@@ -175,6 +281,9 @@ def _generate_number_prompt(variable: Variable, project_context: str) -> str:
 
     NUMBER variables extract numerical values (integers or floats).
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided document.
 
 {project_context}
@@ -185,6 +294,8 @@ Variable Type: Number (integer or decimal)
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -215,6 +326,9 @@ def _generate_date_prompt(variable: Variable, project_context: str) -> str:
 
     DATE variables extract dates in ISO 8601 format (YYYY-MM-DD).
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided document.
 
 {project_context}
@@ -225,6 +339,8 @@ Variable Type: Date
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -257,6 +373,9 @@ def _generate_boolean_prompt(variable: Variable, project_context: str) -> str:
 
     BOOLEAN variables extract yes/no or true/false values.
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided document.
 
 {project_context}
@@ -267,6 +386,8 @@ Variable Type: Boolean (true/false)
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -298,6 +419,9 @@ def _generate_location_prompt(variable: Variable, project_context: str) -> str:
 
     LOCATION variables extract geographical locations, addresses, or place names.
     """
+    uncertainty_instructions = _build_uncertainty_handling(variable)
+    edge_case_instructions = _build_edge_case_handling(variable)
+
     prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided document.
 
 {project_context}
@@ -308,6 +432,8 @@ Variable Type: Location (geographical location, address, or place name)
 
 **Instructions:**
 {variable.instructions}
+{uncertainty_instructions}
+{edge_case_instructions}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:

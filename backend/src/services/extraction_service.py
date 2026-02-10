@@ -107,13 +107,16 @@ class ExtractionService:
             # Convert value to string (for database storage)
             value_str = self._serialize_value(result.value)
 
+            # Convert confidence from float (0.0-1.0) to integer (0-100) for database
+            confidence_int = int(result.confidence * 100) if result.confidence is not None else None
+
             # Create extraction record
             extraction = Extraction(
                 job_id=job_id,
                 document_id=document_id,
                 variable_id=variable_id,
                 value=value_str,
-                confidence=result.confidence,
+                confidence=confidence_int,
                 source_text=result.source_text[:2000] if result.source_text else None,  # Truncate to 2000 chars
             )
 

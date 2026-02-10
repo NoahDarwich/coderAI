@@ -1,58 +1,51 @@
 """
-Database connection and session management.
+Database configuration and session management.
+
+This module sets up SQLAlchemy async engine and provides session management
+for database operations.
 """
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
-from src.core.config import settings
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    create_async_engine,
+    async_sessionmaker,
+)
+from sqlalchemy.orm import declarative_base
 
-# Convert database URL to async version
-if settings.DATABASE_URL.startswith("sqlite"):
-    # SQLite uses aiosqlite driver
-    DATABASE_URL = settings.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
-elif settings.DATABASE_URL.startswith("postgresql"):
-    # PostgreSQL uses asyncpg driver
-    DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-else:
-    DATABASE_URL = settings.DATABASE_URL
+from .config import settings
 
-# Create async engine with appropriate settings
-engine_kwargs = {
-    "echo": settings.DEBUG,
-    "future": True,
-}
-
-# Add connection pooling for PostgreSQL only (SQLite doesn't support it)
-if not DATABASE_URL.startswith("sqlite"):
-    engine_kwargs.update({
-        "pool_size": 20,
-        "max_overflow": 10,
-        "pool_pre_ping": True,
-    })
-
-engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+# Create async engine
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,  # Log SQL queries in debug mode
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_pre_ping=True,  # Test connections before using them
+)
 
 # Create async session factory
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False,
+    expire_on_commit=False,  # Don't expire objects after commit
     autocommit=False,
     autoflush=False,
 )
 
-# Alias for background tasks (used in job_manager.py)
-async_session_maker = AsyncSessionLocal
-
-# Base class for ORM models
+# Base class for SQLAlchemy models
 Base = declarative_base()
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Dependency for getting database sessions.
-
+    Dependency for getting async database sessions.
+    
+    Usage in FastAPI routes:
+        @app.get("/items")
+        async def get_items(db: AsyncSession = Depends(get_db)):
+            ...
+    
     Yields:
         AsyncSession: Database session
     """
@@ -65,3 +58,23 @@ async def get_db() -> AsyncSession:
             raise
         finally:
             await session.close()
+
+
+async def init_db() -> None:
+    """
+    Initialize database (create tables).
+    
+    Note: In production, use Alembic migrations instead.
+    This is only for testing/development.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def close_db() -> None:
+    """
+    Close database connections.
+    
+    Call this on application shutdown.
+    """
+    await engine.dispose()

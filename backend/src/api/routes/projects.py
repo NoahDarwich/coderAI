@@ -43,6 +43,7 @@ async def create_project(
         scale=project_data.scale,
         language=project_data.language,
         domain=project_data.domain,
+        unit_of_observation=project_data.unit_of_observation.model_dump() if project_data.unit_of_observation else None,
         status=ProjectStatus.CREATED,
     )
 

@@ -1,8 +1,8 @@
 # Backend Implementation Status
 
-**Last Updated**: 2025-11-26
+**Last Updated**: 2026-02-09
 **Branch**: `002-backend-implementation`
-**Commit**: efc9506
+**Pipeline Reference**: [ai_agent_reference.md](/ai_agent_reference.md)
 
 ---
 
@@ -189,6 +189,16 @@ backend/src/schemas/
 
 ## 🏗️ Architecture Overview
 
+### Pipeline Architecture (Updated 2026-02-09)
+
+The backend implements a **user-configurable corpus processing pipeline** per [ai_agent_reference.md](/ai_agent_reference.md):
+- **Each project** defines its own domain, extraction targets, and variables via the UI
+- **Assistant configs** are auto-generated from variable definitions (not manually configured)
+- **LLM calls** go through LangChain for multi-provider abstraction
+- **Documents** are ingested from all common formats (PDF, DOCX, CSV, JSON, Parquet, TXT)
+- **Export** produces CSV + Excel with filtering, confidence scores, and quality metrics
+- **Deferred (v2)**: Duplicate detection, external API enrichment, advanced job queue
+
 ### Technology Stack
 
 - **Language**: Python 3.11+
@@ -196,9 +206,9 @@ backend/src/schemas/
 - **ORM**: SQLAlchemy 2.0 (async)
 - **Database**: PostgreSQL 15+ (with asyncpg driver)
 - **Validation**: Pydantic V2
-- **LLM Integration**: LangChain 0.3+ with OpenAI SDK
-- **Document Parsing**: PyMuPDF (PDF), python-docx (DOCX)
-- **Data Processing**: pandas, openpyxl
+- **LLM Integration**: LangChain 0.3+ (multi-provider: OpenAI, Anthropic, local models)
+- **Document Ingestion**: PyMuPDF (PDF), python-docx (DOCX), pandas + pyarrow (CSV/JSON/Parquet)
+- **Data Export**: pandas + openpyxl (CSV + Excel)
 - **Migrations**: Alembic 1.13+
 - **Testing**: pytest, pytest-asyncio, pytest-cov
 - **Code Quality**: black, ruff, mypy

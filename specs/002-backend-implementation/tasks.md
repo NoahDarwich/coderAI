@@ -1,352 +1,579 @@
-# Implementation Tasks: Backend Implementation for Data Extraction Workflow
+# Tasks: Backend Implementation for Data Extraction Workflow
 
 **Feature**: 002-backend-implementation
 **Branch**: `002-backend-implementation`
 **Created**: 2025-11-26
-**Status**: Ready for Implementation
+**Updated**: 2026-02-09 (Pipeline architecture alignment + Phases 1-4 Complete)
+**Status**: In Progress - User Stories 1-2 Complete ✅
 
 ---
 
 ## Task Summary
 
-- **Total Tasks**: 89
+- **Total Tasks**: 111 tasks
+- **Completed**: 37 tasks (Phases 1-4) ✅
+- **Remaining**: 74 tasks
 - **MVP Scope**: All 5 user stories (US1-US5) - Complete backend implementation
-- **Parallel Opportunities**: 47 tasks marked [P]
+- **Parallel Opportunities**: 62 tasks marked [P]
 - **Estimated Duration**: 5 weeks (following quickstart.md phases)
+
+---
+
+## Pipeline Architecture Alignment
+
+This implementation follows the pipeline architecture defined in [ai_agent_reference.md](/ai_agent_reference.md):
+
+**Key Decisions:**
+- **LLM Provider**: LangChain 0.3+ (multi-provider abstraction)
+- **Document Formats**: All common (PDF, DOCX, CSV, JSON, Parquet, TXT)
+- **Assistant Config**: Auto-generated from user-defined variables
+- **Export**: CSV + Excel with filtering, confidence scores, and codebook
+- **Deferred (v2)**: Duplicate detection, external API enrichment, advanced job queue
+
+**Pipeline Stages per Document:**
+1. Ingestion (multi-format parsing)
+2. Extraction (identify records per unit of observation)
+3. Enrichment (LLM call per variable via LangChain)
+4. Post-Processing (validation, normalization)
+5. Storage (atomic transaction per document)
+6. Export (CSV + Excel with metadata)
+
+---
+
+## User Workflow Alignment
+
+This backend implementation supports the complete 5-step user workflow from USER_WORKFLOW.md:
+
+| Workflow Step | User Stories | Backend Responsibilities |
+|---------------|--------------|-------------------------|
+| **Step 1: Project Setup & Document Input** | US1 | Store project metadata, handle document uploads, validate inputs, support cloud connection metadata |
+| **Step 2: Unit of Observation** | US1, US2 | Store unit of observation config (document-level vs entity-level), use in prompt generation |
+| **Step 3: Schema Definition** | US1, US2 | Store variable definitions with extraction instructions, classification rules, edge case handling, generate LLM prompts |
+| **Step 4: Schema Review & Confirmation** | US1, US2, US3 | Retrieve complete schema, support sample testing, accept user feedback on extractions, update prompts |
+| **Step 5A: Sample Testing** | US3 | Process sample subset, return results with confidence scores, accept corrections, refine prompts |
+| **Step 5B: Full Processing** | US4 | Batch process all documents, track progress, handle errors, continue despite failures |
+| **Step 6: Results & Export** | US5 | Aggregate extractions, structure dataset (wide/long format), generate CSV/Excel/JSON |
 
 ---
 
 ## User Story Mapping
 
-| Phase | User Story | Task Count | Dependencies |
-|-------|-----------|------------|--------------|
-| 1 | Setup | 12 | None (start here) |
-| 2 | Foundational | 14 | Phase 1 complete |
-| 3 | US1: Project & Schema Management | 13 | Phase 2 complete |
-| 4 | US2: Prompt Generation | 10 | US1 complete |
-| 5 | US3: Sample Processing | 12 | US2 complete |
-| 6 | US4: Full Batch Processing | 11 | US3 complete |
-| 7 | US5: Data Export | 9 | US4 complete |
-| 8 | Polish & Cross-Cutting | 8 | All US complete |
+| Phase | User Story | Task Count | Dependencies | Status |
+|-------|-----------|------------|--------------|--------|
+| 1 | Setup | 7 | None (start here) | ✅ Complete |
+| 2 | Foundational | 7 | Phase 1 complete | ✅ Complete |
+| 3 | US1: Project & Schema Management | 12 | Phase 2 complete | ✅ Complete |
+| 4 | US2: Prompt Generation & Configuration | 11 | US1 complete | ✅ Complete |
+| 5 | US3: Sample Processing & Validation | 25 | US2 complete | 🔄 Ready to start |
+| 6 | US4: Full Batch Processing | 12 | US3 complete | ⏳ Pending |
+| 7 | US5: Data Export | 15 | US4 complete | ⏳ Pending |
+| 8 | Polish & Cross-Cutting | 16 | All US complete | ⏳ Pending |
 
 ---
 
-## Phase 1: Setup & Project Initialization
+## Phase 1: Setup (Shared Infrastructure) ✅ COMPLETE
 
-**Goal**: Initialize backend directory structure, dependencies, and development environment
+**Purpose**: Project initialization and basic backend structure
 
-**Tasks**:
+**Dependencies**: None
 
-- [X] T001 Create backend directory structure per plan.md at backend/
-- [X] T002 Create backend/requirements.txt with FastAPI 0.100+, SQLAlchemy 2.0, Pydantic V2, LangChain 0.3+, OpenAI SDK, PyMuPDF, python-docx, pandas, openpyxl
-- [X] T003 Create backend/requirements-dev.txt with pytest, pytest-asyncio, pytest-cov, black, ruff
-- [X] T004 Create backend/.env.example with DATABASE_URL, REDIS_URL, OPENAI_API_KEY, API_HOST, API_PORT, DEBUG, ALLOWED_ORIGINS placeholders
-- [X] T005 Create backend/.gitignore with Python patterns (__pycache__/, *.pyc, .venv/, venv/, dist/, *.egg-info/, .env, *.log)
-- [X] T006 Create backend/README.md with setup instructions and development commands
-- [X] T007 Initialize Alembic in backend/ with alembic init alembic command
-- [X] T008 Create backend/alembic.ini configuration with database URL from environment variable
-- [X] T009 Create backend/docker/Dockerfile for containerized deployment
-- [X] T010 Create backend/docker/docker-compose.yml with PostgreSQL, Redis, and API services
-- [X] T011 Create backend/src/core/config.py with Pydantic Settings for environment variables
-- [X] T012 Create backend/src/core/database.py with SQLAlchemy async engine and session factory
+- [x] T001 Create backend directory structure per plan.md (backend/src/{api/routes,core,models,schemas,services,workers}, backend/tests/, backend/alembic/, backend/docker/)
+- [x] T002 [P] Initialize Python virtual environment and install core dependencies (FastAPI, SQLAlchemy, Pydantic, Alembic) in backend/requirements.txt
+- [x] T003 [P] Create development requirements file with pytest, black, ruff in backend/requirements-dev.txt
+- [x] T004 [P] Configure environment variables in backend/.env.example (DATABASE_URL, REDIS_URL, OPENAI_API_KEY, CORS origins)
+- [x] T005 [P] Setup database connection configuration in backend/src/core/config.py using Pydantic Settings
+- [x] T006 [P] Create SQLAlchemy async engine and session management in backend/src/core/database.py
+- [x] T007 Initialize Alembic for database migrations in backend/alembic/ with env.py configured for async SQLAlchemy
 
-**Validation**: Directory structure matches plan.md, dependencies installed, Alembic initialized
+**Validation**: Directory structure matches plan.md, dependencies installed, Alembic initialized ✅
 
 ---
 
-## Phase 2: Foundational Infrastructure
+## Phase 2: Foundational (Blocking Prerequisites) ✅ COMPLETE
 
-**Goal**: Set up database models, schemas, and core services (blocking prerequisites for all user stories)
+**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
 **Dependencies**: Phase 1 complete
 
-**Tasks**:
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T013 [P] Create backend/src/models/__init__.py with Base model import
-- [X] T014 [P] Create backend/src/models/project.py with Project SQLAlchemy model (fields per data-model.md)
-- [X] T015 [P] Create backend/src/models/variable.py with Variable SQLAlchemy model (fields per data-model.md)
-- [X] T016 [P] Create backend/src/models/prompt.py with Prompt SQLAlchemy model (fields per data-model.md)
-- [X] T017 [P] Create backend/src/models/document.py with Document SQLAlchemy model (fields per data-model.md)
-- [X] T018 [P] Create backend/src/models/processing_job.py with ProcessingJob SQLAlchemy model (fields per data-model.md)
-- [X] T019 [P] Create backend/src/models/extraction.py with Extraction SQLAlchemy model (fields per data-model.md)
-- [X] T020 [P] Create backend/src/models/extraction_feedback.py with ExtractionFeedback SQLAlchemy model (fields per data-model.md)
-- [X] T021 [P] Create backend/src/models/processing_log.py with ProcessingLog SQLAlchemy model (fields per data-model.md)
-- [X] T022 Generate initial Alembic migration with alembic revision --autogenerate -m "Initial schema" in backend/
-- [X] T023 Review and edit generated migration in backend/alembic/versions/ to ensure all models included
-- [X] T024 Apply migration with alembic upgrade head in backend/
-- [X] T025 [P] Create backend/src/api/dependencies.py with get_db dependency for database sessions
-- [X] T026 [P] Create backend/src/api/middleware.py with CORS middleware and error handling
+- [x] T008 Create base SQLAlchemy model with common fields (id, created_at, updated_at) in backend/src/models/base.py
+- [x] T009 [P] Setup FastAPI application with CORS middleware in backend/src/main.py
+- [x] T010 [P] Create database dependency for FastAPI route injection in backend/src/api/dependencies.py
+- [x] T011 [P] Configure structured error handling middleware (RFC 7807 format) in backend/src/api/middleware.py
+- [x] T012 [P] Setup PostgreSQL enums (project_scale, project_status, variable_type, content_type, job_type, job_status, log_level) in backend/alembic/versions/001_create_enums.py
+- [x] T013 [P] Create Pydantic base schemas with config for camelCase serialization in backend/src/schemas/base.py
+- [x] T014 [P] Setup logging configuration with structured JSON logging in backend/src/core/logging.py
 
-**Validation**: Database migrations applied successfully, all 8 tables created with indexes
+**Checkpoint**: Foundation ready - user story implementation can now begin in parallel ✅
 
 ---
 
-## Phase 3: User Story 1 - Project & Schema Management
+## Phase 3: User Story 1 - Project & Schema Management (Priority: P1) 🎯 MVP ✅ COMPLETE
 
-**Goal**: Implement project CRUD and variable definition storage
+**Goal**: Store project metadata and variable definitions with versioning support, including unit of observation configuration
 
-**User Story**: US1 - A researcher creates a project and defines extraction variables. The backend must store this configuration and make it available for processing.
+**Workflow Steps**:
+- Step 1: Project Setup & Document Input
+- Step 2: Unit of Observation
+- Step 3: Schema Definition
 
-**Independent Test**: Backend can receive project creation request with metadata, store project, accept variable definitions, store schema with versioning, and retrieve project state.
+**Independent Test**: Create project via API with unit of observation config, add variables with extraction instructions and edge case handling, retrieve complete project state
 
 **Dependencies**: Phase 2 complete
 
-**Tasks**:
+### Database Models for User Story 1
 
-- [X] T027 [US1] Create backend/src/schemas/project.py with ProjectCreate, ProjectUpdate, Project, ProjectDetail Pydantic schemas
-- [X] T028 [US1] Create backend/src/schemas/variable.py with VariableCreate, VariableUpdate, Variable, VariableDetail Pydantic schemas
-- [X] T029 [US1] Create backend/src/api/routes/projects.py with POST /api/v1/projects endpoint (create project)
-- [X] T030 [US1] Implement GET /api/v1/projects endpoint (list projects with pagination) in backend/src/api/routes/projects.py
-- [X] T031 [US1] Implement GET /api/v1/projects/{projectId} endpoint (get project details) in backend/src/api/routes/projects.py
-- [X] T032 [US1] Implement PUT /api/v1/projects/{projectId} endpoint (update project) in backend/src/api/routes/projects.py
-- [X] T033 [US1] Implement DELETE /api/v1/projects/{projectId} endpoint (delete project) in backend/src/api/routes/projects.py
-- [X] T034 [US1] Create backend/src/api/routes/variables.py with GET /api/v1/projects/{projectId}/variables endpoint (list variables)
-- [X] T035 [US1] Implement POST /api/v1/projects/{projectId}/variables endpoint (create variable) in backend/src/api/routes/variables.py
-- [X] T036 [US1] Implement GET /api/v1/variables/{variableId} endpoint (get variable details) in backend/src/api/routes/variables.py
-- [X] T037 [US1] Implement PUT /api/v1/variables/{variableId} endpoint (update variable) in backend/src/api/routes/variables.py
-- [X] T038 [US1] Implement DELETE /api/v1/variables/{variableId} endpoint (delete variable) in backend/src/api/routes/variables.py
-- [X] T039 [US1] Create backend/src/main.py with FastAPI app initialization, include routers, configure CORS
+- [x] T015 [P] [US1] Create Project model in backend/src/models/project.py (id, name, scale, language, domain, unit_of_observation JSONB, status, timestamps)
+- [x] T016 [P] [US1] Create Variable model in backend/src/models/variable.py (id, project_id FK, name, type, instructions, classification_rules JSONB, uncertainty_handling JSONB, edge_cases JSONB, order, timestamps)
+- [x] T017 [US1] Generate Alembic migration for projects and variables tables in backend/alembic/versions/002_create_projects_variables.py
+
+### Pydantic Schemas for User Story 1
+
+- [x] T018 [P] [US1] Create ProjectCreate schema with unit_of_observation config (what_each_row_represents, rows_per_document, entity_identification_pattern) in backend/src/schemas/project.py
+- [x] T019 [P] [US1] Create ProjectUpdate, ProjectResponse schemas in backend/src/schemas/project.py
+- [x] T020 [P] [US1] Create VariableCreate schema with uncertainty_handling (confidence_threshold, if_uncertain_action, multiple_values_action) in backend/src/schemas/variable.py
+- [x] T021 [P] [US1] Create VariableUpdate, VariableResponse schemas with edge_cases and validation_rules in backend/src/schemas/variable.py
+
+### API Routes for User Story 1
+
+- [x] T022 [US1] Implement project CRUD endpoints (POST /projects, GET /projects, GET /projects/{id}, PUT /projects/{id}, DELETE /projects/{id}) in backend/src/api/routes/projects.py
+- [x] T023 [US1] Implement variable CRUD endpoints (GET /projects/{id}/variables, POST /projects/{id}/variables, GET /variables/{id}, PUT /variables/{id}, DELETE /variables/{id}) in backend/src/api/routes/variables.py
+
+### Validation & Edge Cases for User Story 1
+
+- [x] T024 [US1] Add input validation for project creation (name 1-255 chars, valid scale enum, unit_of_observation required) in project routes
+- [x] T025 [US1] Add input validation for variable creation (name alphanumeric+underscore, instructions 10-5000 chars, type-specific validation) in variable routes
+- [x] T026 [US1] Implement schema versioning logic (increment version on variable update) in variable update endpoint
 
 **Acceptance Criteria**:
-1. ✅ Frontend can create project with name and scale, backend returns project with UUID
-2. ✅ Frontend can create variable with name/type/instructions, backend stores and associates with project
-3. ✅ Frontend can update variable, backend updates and increments schema version
-4. ✅ Frontend can retrieve complete project with all variables
+1. ✅ Frontend can create project with unit of observation config (document-level or entity-level)
+2. ✅ Frontend can create variable with uncertainty handling (confidence threshold, multi-value strategy)
+3. ✅ Frontend can define edge case handling (missing fields, validation rules)
+4. ✅ Frontend can retrieve complete project with all variables and configuration
 
-**Validation**: All project and variable CRUD operations work via API, OpenAPI docs available at /docs
+**Checkpoint**: Projects and variables fully manageable with workflow-aligned configuration ✅
 
 ---
 
-## Phase 4: User Story 2 - Prompt Generation & Configuration
+## Phase 4: User Story 2 - Prompt Generation & Configuration (Priority: P1) 🎯 MVP ✅ COMPLETE
 
-**Goal**: Transform user's natural language instructions into optimized LLM prompts
+**Goal**: Generate optimized LLM prompts from variable definitions incorporating project context, unit of observation, and user-provided instructions
 
-**User Story**: US2 - The backend transforms user's natural language extraction instructions into optimized LLM prompts with appropriate model configurations.
+**Workflow Step**: Step 3 (Schema Definition - background processing)
 
-**Independent Test**: Backend receives variable definition, generates LLM prompt incorporating project context, stores prompt with model config, and supports prompt versioning.
+**Independent Test**: Create variable, verify prompt generated automatically with project context (document type, domain, unit of observation), model config, and extraction instructions
 
-**Dependencies**: US1 complete (requires Variable model)
+**Dependencies**: US1 complete (requires Variable and Project models)
 
-**Tasks**:
+### Database Models for User Story 2
 
-- [X] T040 [US2] Create backend/src/services/prompt_generator.py with generate_prompt(variable, project_context) function
-- [X] T041 [US2] Implement prompt template for TEXT variable type in backend/src/services/prompt_generator.py
-- [X] T042 [US2] Implement prompt template for CATEGORY variable type with classification rules in backend/src/services/prompt_generator.py
-- [X] T043 [US2] Implement prompt template for NUMBER variable type in backend/src/services/prompt_generator.py
-- [X] T044 [US2] Implement prompt template for DATE variable type in backend/src/services/prompt_generator.py
-- [X] T045 [US2] Implement prompt template for BOOLEAN variable type in backend/src/services/prompt_generator.py
-- [X] T046 [US2] Implement model configuration logic (temperature=0.2 for precision, max_tokens based on type) in backend/src/services/prompt_generator.py
-- [X] T047 [US2] Update POST /api/v1/projects/{projectId}/variables endpoint to auto-generate prompt on variable creation in backend/src/api/routes/variables.py
-- [X] T048 [US2] Update PUT /api/v1/variables/{variableId} endpoint to regenerate prompt and increment version on variable update in backend/src/api/routes/variables.py
-- [X] T049 [US2] Update GET /api/v1/variables/{variableId} endpoint to include current prompt in response in backend/src/api/routes/variables.py
+- [x] T027 [US2] Create Prompt model in backend/src/models/prompt.py (id, variable_id FK, prompt_text, model_config JSONB, version, created_at)
+- [x] T028 [US2] Generate Alembic migration for prompts table in backend/alembic/versions/003_create_prompts.py
+
+### Service Layer for User Story 2
+
+- [x] T029 [US2] Implement PromptGenerator service with generate_prompt method in backend/src/services/prompt_generator.py
+- [x] T030 [US2] Incorporate project context into prompts (document_type, domain, language from Step 1) in PromptGenerator
+- [x] T031 [US2] Incorporate unit of observation into prompts (what_each_row_represents, extraction_mode, entity_identification) in PromptGenerator
+- [x] T032 [US2] Create prompt templates for different variable types (TEXT, NUMBER, DATE, CATEGORY, BOOLEAN) in PromptGenerator
+- [x] T033 [US2] Include uncertainty handling instructions in prompts (confidence threshold, if_uncertain behavior, multi-value strategy) in PromptGenerator
+- [x] T034 [US2] Add edge case handling to prompts (if missing, validation rules, dependencies) in PromptGenerator
+- [x] T035 [US2] Implement model configuration selection (temperature, max_tokens based on variable type and precision) in PromptGenerator
+- [x] T036 [US2] Add prompt versioning service methods (create new version, retrieve latest, retrieve specific version) in backend/src/services/prompt_service.py
+
+### Integration with User Story 1
+
+- [x] T037 [US2] Update variable creation endpoint to auto-generate prompt (version 1) when variable is created in backend/src/api/routes/variables.py
 
 **Acceptance Criteria**:
-1. ✅ Text variable generates prompt with project context and extraction format
-2. ✅ Categorical variable generates prompt with categories and selection logic
-3. ✅ High precision variables have temperature ≤ 0.2
-4. ✅ Variable update creates new prompt version and preserves old versions
+1. ✅ Prompt includes project context: "You are extracting from [FILE_TYPE] in [DOMAIN] in [LANGUAGE]"
+2. ✅ Prompt includes unit of observation: "Each row represents [UNIT]" with extraction mode instructions
+3. ✅ Prompt includes variable-specific instructions from user
+4. ✅ Prompt includes uncertainty handling strategy
+5. ✅ Variable update creates new prompt version
 
-**Validation**: Prompts generated correctly for all variable types, prompt versioning works
+**Checkpoint**: Prompts automatically generated with rich context from workflow steps 1-3 ✅
 
 ---
 
-## Phase 5: User Story 3 - Sample Processing & Validation
+## Phase 5: User Story 3 - Sample Processing & Validation (Priority: P1) 🎯 MVP
 
-**Goal**: Process sample documents, return results, accept feedback, refine prompts
+**Goal**: Process sample subset of documents with LLM, return results with confidence scores, accept feedback, refine prompts based on user corrections
 
-**User Story**: US3 - A researcher tests their schema on a sample of documents. The backend processes the sample, returns results, accepts feedback, and refines prompts.
+**Workflow Steps**:
+- Step 4: Schema Review & Confirmation
+- Step 5A: Sample Testing
 
-**Independent Test**: Backend processes sample subset, calls LLM for each variable, parses responses, accepts user flags for incorrect extractions, analyzes corrections, and updates prompts.
+**Independent Test**: Upload documents, create sample job for user-selected number of docs, verify extractions created with confidence scores, submit feedback on incorrect extractions, verify prompt updated based on patterns
 
 **Dependencies**: US2 complete (requires prompt generation)
 
-**Tasks**:
+### Database Models for User Story 3
 
-- [X] T050 [US3] Create backend/src/schemas/document.py with DocumentCreate, Document, DocumentDetail Pydantic schemas
-- [X] T051 [US3] Create backend/src/schemas/processing.py with JobCreate, ProcessingJob, JobDetail, Extraction Pydantic schemas
-- [X] T052 [US3] Create backend/src/services/document_processor.py with parse_pdf(file), parse_docx(file), parse_txt(file) functions using PyMuPDF and python-docx
-- [X] T053 [US3] Create backend/src/api/routes/documents.py with POST /api/v1/projects/{projectId}/documents endpoint (upload document with multipart/form-data)
-- [X] T054 [US3] Implement GET /api/v1/projects/{projectId}/documents endpoint (list documents) in backend/src/api/routes/documents.py
-- [X] T055 [US3] Implement DELETE /api/v1/documents/{documentId} endpoint (delete document) in backend/src/api/routes/documents.py
-- [X] T056 [US3] Create backend/src/services/llm_client.py with LangChain ChatOpenAI integration and PydanticOutputParser for structured extraction
-- [X] T057 [US3] Implement retry logic with exponential backoff (max 3 retries) in backend/src/services/llm_client.py
-- [X] T058 [US3] Create backend/src/services/extraction_service.py with extract_value(document, variable, prompt) function that calls LLM
-- [X] T059 [US3] Create backend/src/api/routes/processing.py with POST /api/v1/projects/{projectId}/jobs endpoint (create processing job for sample)
-- [X] T060 [US3] Implement job processing logic in backend/src/services/job_manager.py to process sample documents synchronously (MVP: use FastAPI BackgroundTasks)
-- [X] T061 [US3] Create backend/src/schemas/feedback.py with FeedbackCreate, Feedback Pydantic schemas and POST /api/v1/extractions/{extractionId}/feedback endpoint in backend/src/api/routes/processing.py
+- [ ] T038 [P] [US3] Create Document model in backend/src/models/document.py (id, project_id FK, name, content, content_type, size_bytes, uploaded_at)
+- [ ] T039 [P] [US3] Create ProcessingJob model in backend/src/models/processing_job.py (id, project_id FK, job_type, status, document_ids JSONB, progress, started_at, completed_at)
+- [ ] T040 [P] [US3] Create Extraction model in backend/src/models/extraction.py (id, job_id FK, document_id FK, variable_id FK, value, confidence, source_text, created_at)
+- [ ] T041 [P] [US3] Create ExtractionFeedback model in backend/src/models/extraction_feedback.py (id, extraction_id FK, is_correct, correct_value, user_comment, created_at)
+- [ ] T042 [P] [US3] Create ProcessingLog model in backend/src/models/processing_log.py (id, job_id FK, document_id FK nullable, variable_id FK nullable, log_level, message, created_at)
+- [ ] T043 [US3] Generate Alembic migration for processing tables in backend/alembic/versions/004_create_processing_tables.py
+
+### Document Processing Services (Multi-Format Ingestion)
+
+- [ ] T044 [P] [US3] Implement DocumentProcessor service for PDF text extraction using PyMuPDF in backend/src/services/document_processor.py
+- [ ] T045 [P] [US3] Add DOCX text extraction support using python-docx in DocumentProcessor
+- [ ] T046 [P] [US3] Add plain text file support in DocumentProcessor
+- [ ] T044a [P] [US3] Add CSV bulk ingestion support (each row becomes a document, user maps text column) using pandas in DocumentProcessor
+- [ ] T044b [P] [US3] Add JSON bulk ingestion support (configurable text field mapping) in DocumentProcessor
+- [ ] T044c [P] [US3] Add Parquet bulk ingestion support using pyarrow + pandas in DocumentProcessor
+- [ ] T047 [US3] Implement document chunking logic for large documents (>10 pages or >5000 words) in DocumentProcessor
+
+### LLM Integration Services (LangChain Multi-Provider)
+
+- [ ] T048 [US3] Setup LangChain LLM client with provider abstraction (OpenAI default, support Anthropic/local) and retry logic (max 3 retries, exponential backoff via tenacity) in backend/src/services/llm_client.py
+- [ ] T049 [US3] Implement structured output parsing using LangChain JsonOutputParser with Pydantic schemas for LLM responses in llm_client
+- [ ] T050 [US3] Create ExtractionService to orchestrate pipeline stages per document (extraction → enrichment → post-processing → storage) in backend/src/services/extraction_service.py
+- [ ] T050a [US3] Implement auto-generated assistant config usage in ExtractionService (load Prompt + model_config per variable, call via LangChain)
+- [ ] T051 [US3] Add confidence score extraction and validation (0.0-1.0 range) in ExtractionService
+- [ ] T052 [US3] Add source text extraction (document excerpt that generated result) in ExtractionService
+- [ ] T053 [US3] Add error handling for LLM failures (timeout, rate limit, malformed response) with logging in ExtractionService
+- [ ] T053a [US3] Add post-processing step (date normalization, type coercion, validation against user-defined rules) in ExtractionService
+
+### Job Management Services
+
+- [ ] T054 [US3] Implement JobManager service for creating processing jobs in backend/src/services/job_manager.py
+- [ ] T055 [US3] Add job progress tracking methods (update progress percentage, mark complete/failed) in JobManager
+- [ ] T056 [US3] Implement sample processing worker logic (process user-selected subset of documents) in backend/src/workers/processing_worker.py
+- [ ] T057 [US3] Add job cancellation support (update status to CANCELLED, stop processing) in JobManager
+
+### API Routes for User Story 3
+
+- [ ] T058 [P] [US3] Implement document upload endpoint (POST /projects/{id}/documents with multipart form data) in backend/src/api/routes/documents.py
+- [ ] T059 [P] [US3] Implement document listing and retrieval endpoints (GET /projects/{id}/documents, GET /documents/{id}, DELETE /documents/{id}) in backend/src/api/routes/documents.py
+- [ ] T060 [US3] Implement job creation endpoint (POST /projects/{id}/jobs with job_type=SAMPLE, document_count) in backend/src/api/routes/processing.py
+- [ ] T061 [US3] Implement job status endpoint (GET /jobs/{id} with progress, status, current document, extraction statistics) in backend/src/api/routes/processing.py
+- [ ] T062 [US3] Implement job results endpoint (GET /jobs/{id}/results returning extractions with confidence scores, filterable by confidence threshold) in backend/src/api/routes/processing.py
+
+### Feedback Loop & Interactive Review (NEW from USER_WORKFLOW.md)
+
+- [ ] T063 [US3] Implement extraction detail endpoint (GET /extractions/{id} with source text, AI reasoning, confidence) in backend/src/api/routes/processing.py
+- [ ] T064 [US3] Implement feedback submission endpoint (POST /extractions/{id}/feedback with is_correct, correct_value, user_comment) in backend/src/api/routes/processing.py
+- [ ] T065 [US3] Create FeedbackAnalyzer service to identify error patterns from user corrections in backend/src/services/feedback_analyzer.py
+- [ ] T066 [US3] Implement prompt refinement logic based on feedback patterns in FeedbackAnalyzer
+- [ ] T067 [US3] Add extraction statistics endpoint (GET /jobs/{id}/statistics with success_rate_per_variable, avg_confidence, common_errors) in backend/src/api/routes/processing.py
+
+### Pydantic Schemas for User Story 3
+
+- [ ] T068 [P] [US3] Create DocumentUpload, DocumentResponse schemas in backend/src/schemas/document.py
+- [ ] T069 [P] [US3] Create JobCreate (with document_count for sample), JobResponse, JobStatus schemas in backend/src/schemas/processing.py
+- [ ] T070 [P] [US3] Create ExtractionResponse (with source_text, reasoning), ExtractionDetail, FeedbackCreate schemas in backend/src/schemas/processing.py
+
+### Background Processing Setup
+
+- [ ] T071 [US3] Setup in-memory async queue for MVP (use asyncio.Queue for job processing) in backend/src/workers/queue_manager.py
+- [ ] T072 [US3] Create background task runner to consume jobs from queue in backend/src/workers/task_runner.py
 
 **Acceptance Criteria**:
-1. ✅ Sample job created with 10 document IDs
-2. ✅ LLM called for each variable with correct prompt
-3. ✅ Extracted value and confidence score stored
-4. ✅ Feedback accepted and prompt updated based on corrections
-5. ✅ Re-running sample uses new prompt version
+1. ✅ User can select number of sample documents (e.g., 20 docs)
+2. ✅ LLM called for each (document, variable) with enriched prompt
+3. ✅ Extractions include value, confidence score (0-1), and source text
+4. ✅ User can click extraction to see source text, AI reasoning, confidence
+5. ✅ User can flag extraction as incorrect and provide correct value
+6. ✅ Feedback analyzer identifies patterns and updates prompt
+7. ✅ Re-running sample uses updated prompt version
 
-**Validation**: Sample processing works end-to-end, feedback loop updates prompts
+**Checkpoint**: Sample testing with interactive review and feedback loop fully functional
 
 ---
 
-## Phase 6: User Story 4 - Full Batch Processing
+## Phase 6: User Story 4 - Full Batch Processing (Priority: P1) 🎯 MVP
 
-**Goal**: Run asynchronous batch processing with progress tracking and error handling
+**Goal**: Process all documents asynchronously with real-time progress tracking, error resilience, and continuous quality monitoring
 
-**User Story**: US4 - A researcher processes all documents after validating schema. The backend runs asynchronous batch processing with progress tracking and error handling.
+**Workflow Step**: Step 5B (Full Processing)
 
-**Independent Test**: Backend creates batch job for all documents, processes asynchronously, tracks progress, logs errors, continues despite failures, and notifies on completion.
+**Independent Test**: Create full processing job for all documents, verify async execution, track progress in real-time, verify error recovery, verify completion with all extractions
 
-**Dependencies**: US3 complete (requires extraction service)
+**Dependencies**: US3 complete (requires extraction service and sample validation)
 
-**Tasks**:
+### Full Processing Implementation
 
-- [X] T062 [US4] Implement GET /api/v1/projects/{projectId}/jobs endpoint (list jobs) in backend/src/api/routes/processing.py
-- [X] T063 [US4] Implement GET /api/v1/jobs/{jobId} endpoint (get job status with progress and recent logs) in backend/src/api/routes/processing.py
-- [X] T064 [US4] Implement DELETE /api/v1/jobs/{jobId} endpoint (cancel job) in backend/src/api/routes/processing.py
-- [X] T065 [US4] Update POST /api/v1/projects/{projectId}/jobs endpoint to support FULL job type (all documents) in backend/src/api/routes/processing.py
-- [X] T066 [US4] Implement progress tracking in backend/src/services/job_manager.py (update job.progress field as documents complete)
-- [X] T067 [US4] Implement error logging in backend/src/services/job_manager.py (create ProcessingLog entries for errors)
-- [X] T068 [US4] Implement error resilience in backend/src/services/job_manager.py (continue processing after individual failures, mark failed documents)
-- [X] T069 [US4] Implement job cancellation logic in backend/src/services/job_manager.py (set status=CANCELLED, stop processing)
-- [X] T070 [US4] Update job processing to be asynchronous using FastAPI BackgroundTasks in backend/src/services/job_manager.py
-- [X] T071 [US4] Implement GET /api/v1/jobs/{jobId}/results endpoint (return extractions with optional minConfidence filter) in backend/src/api/routes/processing.py
-- [X] T072 [US4] Add job status transition validation (PENDING → PROCESSING → COMPLETE/FAILED) in backend/src/models/processing_job.py
+- [ ] T073 [US4] Add full batch processing support (job_type=FULL, document_ids=all) in JobManager service
+- [ ] T074 [US4] Implement real-time progress updates (documents_completed/total, current_document, percentage, estimated_time_remaining) in processing worker
+- [ ] T075 [US4] Add running statistics (success_rate, items_flagged_for_review, avg_processing_time_per_doc) in processing worker
+- [ ] T076 [US4] Implement resilient error handling (log failures, continue processing, mark document as failed) in processing worker
+- [ ] T077 [US4] Implement job status transitions (PENDING → PROCESSING → COMPLETE/FAILED) in processing worker
+
+### Project Status Updates
+
+- [ ] T078 [US4] Update project status to PROCESSING when full job starts in job creation endpoint
+- [ ] T079 [US4] Update project status to COMPLETE when full job completes successfully in processing worker
+- [ ] T080 [US4] Update project status to ERROR on job failure with error details in processing worker
+
+### Progress Polling & Continuous Quality Monitoring (NEW from USER_WORKFLOW.md)
+
+- [ ] T081 [P] [US4] Add progress polling endpoint (GET /jobs/{id}/progress with detailed stats) in backend/src/api/routes/processing.py
+- [ ] T082 [P] [US4] Add processing logs retrieval endpoint (GET /jobs/{id}/logs with filtering by log_level, timestamps) in backend/src/api/routes/processing.py
+- [ ] T083 [US4] Implement pause/resume functionality for long-running jobs in JobManager
+- [ ] T084 [US4] Add flagged items retrieval (GET /jobs/{id}/flagged for low-confidence extractions) in backend/src/api/routes/processing.py
+
+### Error Recovery
+
+- [ ] T085 [US4] Implement retry logic for failed extractions (exponential backoff, max 3 retries) in ExtractionService
+- [ ] T086 [US4] Add timeout handling for slow LLM calls (30 second timeout per call) in llm_client
+- [ ] T087 [US4] Implement job resumption after server restart (mark in-progress jobs as PENDING on startup) in task_runner
 
 **Acceptance Criteria**:
-1. ✅ Full processing job created with status PROCESSING
-2. ✅ Progress updates stored (documents completed, percentage)
-3. ✅ Errors logged and processing continues with next document
-4. ✅ Job status updates to COMPLETE when done
-5. ✅ Frontend can poll for progress updates
+1. ✅ Full job created with status PROCESSING
+2. ✅ Real-time progress updates (docs completed, percentage, estimated time remaining)
+3. ✅ Running statistics (success rate, flagged items, avg time per doc)
+4. ✅ User can pause and review flagged items during processing
+5. ✅ Errors logged, processing continues with next document
+6. ✅ Job status updates to COMPLETE when done
+7. ✅ User can navigate away, processing continues in background
 
-**Validation**: Full batch processing works asynchronously, progress tracking accurate, error handling robust
+**Checkpoint**: Full processing works reliably with real-time monitoring and quality control
 
 ---
 
-## Phase 7: User Story 5 - Data Aggregation & Export
+## Phase 7: User Story 5 - Data Aggregation & Export (Priority: P1) 🎯 MVP
 
-**Goal**: Aggregate extractions and generate export files in desired formats
+**Goal**: Aggregate extractions into structured datasets and generate export files in multiple formats with rich metadata
 
-**User Story**: US5 - A researcher exports processed data in desired format. The backend aggregates extractions, structures dataset, and generates export file with metadata.
+**Workflow Step**: Step 6 (Results & Export)
 
-**Independent Test**: Backend retrieves all extractions for project, structures data in wide/long format, includes optional metadata (confidence scores, source text), and generates CSV/Excel/JSON.
+**Independent Test**: Complete processing job, request export in CSV wide format with confidence scores and source text, verify file generation with correct structure and metadata
 
 **Dependencies**: US4 complete (requires completed extractions)
 
-**Tasks**:
+### Export Service Implementation
 
-- [X] T073 [US5] Create backend/src/schemas/export.py with ExportConfig Pydantic schema (format, includeConfidence, includeSourceText, minConfidence)
-- [X] T074 [US5] Create backend/src/services/export_service.py with aggregate_extractions(project_id) function using pandas
-- [X] T075 [US5] Implement CSV wide format export (1 row per document, columns = variables) in backend/src/services/export_service.py
-- [X] T076 [US5] Implement CSV long format export (1 row per extraction) in backend/src/services/export_service.py
-- [X] T077 [US5] Implement Excel export using openpyxl in backend/src/services/export_service.py
-- [X] T078 [US5] Implement JSON export in backend/src/services/export_service.py
-- [X] T079 [US5] Implement optional confidence scores inclusion in backend/src/services/export_service.py
-- [X] T080 [US5] Implement optional source text inclusion in backend/src/services/export_service.py
-- [X] T081 [US5] Create backend/src/api/routes/exports.py with POST /api/v1/projects/{projectId}/export endpoint (generate export file, return download URL)
+- [ ] T088 [US5] Implement ExportService to aggregate extractions into pandas DataFrame in backend/src/services/export_service.py
+- [ ] T089 [US5] Add wide format export (1 row per document, columns = variables) respecting unit of observation in ExportService
+- [ ] T090 [US5] Add long format export (1 row per extraction with document_id, variable_name, value) in ExportService
+- [ ] T091 [US5] Add optional confidence score columns in export formats in ExportService
+- [ ] T092 [US5] Add optional source text columns in export formats in ExportService
+
+### File Generation (CSV + Excel)
+
+- [ ] T093 [P] [US5] Implement CSV export generation using pandas to_csv in ExportService
+- [ ] T094 [P] [US5] Implement Excel export generation using pandas to_excel with openpyxl in ExportService
+
+### Export Metadata & Quality Metrics (NEW from USER_WORKFLOW.md)
+
+- [ ] T098 [US5] Add codebook generation (project metadata + variable definitions with all workflow context) to export package in ExportService
+- [ ] T099 [US5] Include extraction statistics in export metadata (success rate per variable, average confidence, completion percentage) in ExportService
+- [ ] T100 [US5] Add data summary section (row count, column count, processing date, quality metrics) in ExportService
+
+### API Routes for User Story 5
+
+- [ ] T101 [US5] Implement export endpoint (POST /projects/{id}/export with format, includeConfidence, includeSourceText options) in backend/src/api/routes/exports.py
+- [ ] T102 [US5] Add export file download support (return file stream with correct content-type headers) in export endpoint
+
+### Pydantic Schemas for User Story 5
+
+- [ ] T103 [P] [US5] Create ExportRequest schema (format, include_confidence, include_source_text, min_confidence_threshold) in backend/src/schemas/export.py
+- [ ] T104 [P] [US5] Create ExportResponse schema with download_url and metadata in backend/src/schemas/export.py
 
 **Acceptance Criteria**:
-1. ✅ Backend returns dataset with columns=variables, rows=documents
-2. ✅ CSV wide format has 1 row per document
+1. ✅ Backend returns dataset with columns=variables, rows=unit_of_observation
+2. ✅ CSV wide format has 1 row per unit (document or entity)
 3. ✅ CSV long format has 1 row per extraction
 4. ✅ Confidence scores included when requested
 5. ✅ Source text included when requested
+6. ✅ Export includes codebook with complete workflow context
+7. ✅ Export includes quality metrics (completion %, confidence stats)
+8. ✅ Multiple export formats supported (CSV, Excel, JSON, XML, PDF)
 
-**Validation**: All export formats work correctly, optional metadata inclusion works
+**Checkpoint**: Complete workflow functional - can export structured, high-quality datasets with rich metadata
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-**Goal**: Final polish, validation, testing, and documentation
+**Purpose**: Performance optimization, logging, monitoring, deployment readiness
 
 **Dependencies**: All user stories (US1-US5) complete
 
-**Tasks**:
+### Performance Optimization
 
-- [X] T082 [P] Implement request validation for all endpoints using Pydantic in backend/src/schemas/
-- [X] T083 [P] Implement RFC 7807 error format for all API errors in backend/src/api/middleware.py
-- [X] T084 [P] Add database indexes for frequently queried fields per data-model.md in Alembic migration
-- [X] T085 [P] Create backend/tests/conftest.py with pytest fixtures (test_db, mock_llm, sample_project)
-- [X] T086 [P] Write API tests for project and variable CRUD in backend/tests/api/test_projects.py and backend/tests/api/test_variables.py
-- [X] T087 [P] Write service tests for prompt generation in backend/tests/services/test_prompt_generator.py
-- [X] T088 Run full test suite with pytest and verify >80% coverage in backend/
-- [X] T089 Create deployment documentation in backend/README.md with Docker setup and Railway/Render deployment instructions
+- [ ] T105 [P] Add database indexes per data-model.md (projects.status, variables.project_order, extractions.doc_var, etc.) via Alembic migration in backend/alembic/versions/005_add_indexes.py
+- [ ] T106 [P] Configure SQLAlchemy connection pooling (pool_size=20, max_overflow=10, pool_pre_ping=True) in backend/src/core/database.py
+- [ ] T107 [P] Add LLM API rate limiting (max 10 calls per 60 seconds) in llm_client using RateLimiter
 
-**Validation**: Tests pass, coverage >80%, API documentation complete, deployment ready
+### Logging & Monitoring
 
----
+- [ ] T108 [P] Add structured logging for all API endpoints (request ID, user context, duration) in middleware
+- [ ] T109 [P] Configure Sentry error tracking for production monitoring in backend/src/core/config.py
+- [ ] T110 [P] Add health check endpoint (GET /health with database connection test) in backend/src/api/routes/health.py
 
-## Dependencies & Execution Flow
+### Docker & Deployment
 
-### User Story Dependencies
+- [ ] T111 Create Dockerfile for backend service in backend/docker/Dockerfile
+- [ ] T112 Create docker-compose.yml with PostgreSQL, Redis, API services in backend/docker/docker-compose.yml
+- [ ] T113 [P] Add database migration runner to Docker entrypoint script in backend/docker/entrypoint.sh
+- [ ] T114 [P] Create production environment configuration template in backend/.env.production
 
-```
-Phase 1 (Setup) → Phase 2 (Foundational) → Phase 3 (US1) → Phase 4 (US2) → Phase 5 (US3) → Phase 6 (US4) → Phase 7 (US5) → Phase 8 (Polish)
-```
+### Documentation
 
-**Dependency Justification**:
-- **US1 → US2**: Prompt generation requires Variable model from US1
-- **US2 → US3**: Sample processing requires prompts from US2
-- **US3 → US4**: Full processing reuses extraction logic from US3
-- **US4 → US5**: Export requires completed extractions from US4
+- [ ] T115 [P] Verify OpenAPI schema auto-generated by FastAPI matches contracts/openapi.yaml
+- [ ] T116 [P] Create backend README.md with setup instructions, API overview, deployment guide in backend/README.md
+- [ ] T117 [P] Run quickstart.md validation (verify all setup steps work on fresh environment)
 
-### Parallel Execution Opportunities
+### Code Quality
 
-**Phase 2 - Foundational** (Tasks can run in parallel):
-- T013-T021: All model files (different files, no dependencies)
-- T025-T026: API dependencies and middleware (different files)
+- [ ] T118 [P] Configure black formatter and ruff linter in backend/pyproject.toml
+- [ ] T119 [P] Add pre-commit hooks for formatting and linting in backend/.pre-commit-config.yaml
+- [ ] T120 Run full linting and formatting pass across entire backend codebase
 
-**Phase 3 - US1** (Sequential due to shared route files):
-- T027-T028: Schema files (parallel)
-- T029-T033: Project routes (sequential, same file)
-- T034-T038: Variable routes (sequential, same file)
-
-**Phase 8 - Polish** (Tasks can run in parallel):
-- T082-T087: All different files, no dependencies
+**Validation**: Performance targets met (<200ms API response, <5min sample processing), monitoring configured, deployment ready
 
 ---
 
-## MVP Scope
+## Dependencies & Execution Order
 
-**Recommended MVP**: Complete all 5 user stories (US1-US5)
+### Phase Dependencies
 
-**Rationale**: All 5 user stories are marked P1 (MVP priority) and form a complete, end-to-end workflow. The backend is not functional without all stories implemented - each builds on the previous to deliver the complete data extraction pipeline.
+```
+Phase 1 (Setup)
+  ↓
+Phase 2 (Foundational) ← BLOCKS all user stories
+  ↓
+Phase 3 (US1: Project & Schema)
+  ↓
+Phase 4 (US2: Prompt Generation) ← Uses US1 models
+  ↓
+Phase 5 (US3: Sample Processing) ← Uses US2 prompts
+  ↓
+Phase 6 (US4: Full Processing) ← Extends US3 extraction logic
+  ↓
+Phase 7 (US5: Export) ← Uses US4 extractions
+  ↓
+Phase 8 (Polish)
+```
 
-**MVP Deliverables**:
-1. ✅ Project and schema management (US1)
-2. ✅ Prompt generation (US2)
-3. ✅ Sample processing with feedback (US3)
-4. ✅ Full batch processing (US4)
-5. ✅ Data export in multiple formats (US5)
+### Dependency Justification
 
-**Post-MVP Enhancements** (for future iterations):
-- Authentication and authorization
-- Arq + Redis for persistent job queue
-- Advanced error recovery (circuit breakers)
-- Performance optimizations (caching, connection pooling)
-- Monitoring and observability (Sentry integration)
+- **US1 → US2**: Prompt generation requires Variable and Project models
+- **US2 → US3**: Sample processing requires generated prompts with full context
+- **US3 → US4**: Full processing reuses extraction service and feedback mechanisms
+- **US4 → US5**: Export requires completed extractions from processing jobs
+
+### Recommended Sequential Order (MVP Path)
+
+All stories are P1 and tightly integrated. Recommended order:
+
+1. **Phase 1 (Setup)** → Foundation structure
+2. **Phase 2 (Foundational)** → Database, API framework, middleware
+3. **Phase 3 (US1)** → Projects & Variables → **Checkpoint: Can manage schemas with workflow config**
+4. **Phase 4 (US2)** → Prompt Generation → **Checkpoint: Prompts auto-generated with rich context**
+5. **Phase 5 (US3)** → Sample Processing → **Checkpoint: Can test with feedback loop**
+6. **Phase 6 (US4)** → Full Processing → **Checkpoint: Can process all documents with monitoring**
+7. **Phase 7 (US5)** → Export → **Checkpoint: Complete workflow functional**
+8. **Phase 8 (Polish)** → Performance, deployment, monitoring
+
+### Parallel Opportunities
+
+**Within Setup (Phase 1):**
+- T002-T006 can run in parallel (different files)
+
+**Within Foundational (Phase 2):**
+- T009-T014 can run in parallel (different files)
+
+**Within User Story 1:**
+- T015-T016 (models) can run in parallel
+- T018-T021 (schemas) can run in parallel
+
+**Within User Story 2:**
+- Schemas can run with services
+
+**Within User Story 3:**
+- T038-T042 (models) can run in parallel
+- T044-T046 (document processors) can run in parallel
+- T058-T059 (document routes) can run in parallel
+- T068-T070 (schemas) can run in parallel
+
+**Within User Story 5:**
+- T093-T097 (file generators) can run in parallel
+- T103-T104 (schemas) can run in parallel
+
+**Within Polish (Phase 8):**
+- T105-T107 (performance) can run in parallel
+- T108-T110 (logging/monitoring) can run in parallel
+- T113-T114 (deployment) can run in parallel
+- T115-T117 (docs) can run in parallel
+- T118-T119 (code quality) can run in parallel
 
 ---
 
 ## Implementation Strategy
 
-1. **Follow TDD approach**: Tasks are ordered to implement infrastructure first, then services, then API endpoints
-2. **Incremental delivery**: Each phase builds on previous, enabling early testing
-3. **Parallel where possible**: 47 tasks marked [P] can run in parallel within their phases
-4. **Independent testing**: Each user story phase has clear acceptance criteria for independent validation
-5. **MVP-first**: All P1 stories implemented before any P2/P3 enhancements
+### MVP First (All 5 Stories - Complete Workflow)
+
+All user stories are P1 and form the complete data extraction pipeline. Each builds on the previous to enable the full workflow from USER_WORKFLOW.md.
+
+1. Complete Phase 1: Setup
+2. Complete Phase 2: Foundational
+3. Complete Phase 3: US1 (Project & Schema with workflow config)
+4. Complete Phase 4: US2 (Prompt Generation with context enrichment)
+5. Complete Phase 5: US3 (Sample Processing with feedback loop)
+6. Complete Phase 6: US4 (Full Processing with quality monitoring)
+7. Complete Phase 7: US5 (Export with rich metadata)
+8. **VALIDATE END-TO-END**: Full workflow test
+9. Complete Phase 8: Polish & Deploy
+
+### Integration Checkpoints
+
+- **After Phase 3**: Can create projects with unit of observation, define variables with edge cases
+- **After Phase 4**: Variables auto-generate prompts with full workflow context
+- **After Phase 5**: Can run sample processing, review results interactively, refine prompts
+- **After Phase 6**: Can run full processing with real-time monitoring
+- **After Phase 7**: Can export complete datasets with quality metrics
+- **After Phase 8**: Production-ready deployment
 
 ---
 
-## Task Validation Checklist
+## Task Summary
 
-- ✅ All 89 tasks follow strict checklist format: `- [ ] [TaskID] [P?] [Story?] Description with file path`
-- ✅ All user story phase tasks have [US#] labels (US1-US5)
-- ✅ All parallel tasks marked with [P]
-- ✅ All tasks have specific file paths
-- ✅ Dependencies clearly documented
-- ✅ Acceptance criteria defined for each user story phase
-- ✅ MVP scope clearly identified
+**Total Tasks**: 120 tasks
+
+**Tasks per Phase**:
+- Phase 1 (Setup): 7 tasks
+- Phase 2 (Foundational): 7 tasks
+- Phase 3 (User Story 1): 12 tasks
+- Phase 4 (User Story 2): 11 tasks
+- Phase 5 (User Story 3): 35 tasks
+- Phase 6 (User Story 4): 15 tasks
+- Phase 7 (User Story 5): 17 tasks
+- Phase 8 (Polish): 16 tasks
+
+**Parallel Opportunities**: 62 tasks marked with [P]
+
+**Independent Test Criteria**:
+- US1: Create project with unit of observation config, add variables with edge case handling
+- US2: Verify prompt includes project context, unit of observation, uncertainty handling
+- US3: Run sample with user-selected docs, review results interactively, submit feedback
+- US4: Run full processing with real-time monitoring, pause/resume, error recovery
+- US5: Export with confidence scores, source text, quality metrics, and codebook
+
+**Estimated Implementation**: 5 weeks (per quickstart.md)
+- Week 1: Phases 1-2 (Setup + Foundational)
+- Week 2: Phases 3-4 (US1 + US2)
+- Week 3: Phase 5 (US3 - Sample Processing with feedback)
+- Week 4: Phase 6 (US4 - Full Processing with monitoring)
+- Week 5: Phases 7-8 (US5 + Polish)
 
 ---
 
-**Tasks Ready for Execution** - Proceed with `/speckit.implement`
+## Notes
+
+- All tasks follow strict checklist format: `- [ ] [ID] [P?] [Story] Description with file path`
+- [P] tasks = different files, no dependencies within phase
+- [Story] label (US1-US5) maps task to user story for traceability
+- Backend implements complete USER_WORKFLOW.md (Steps 1-6)
+- Focus on workflow enrichment features: unit of observation, context enrichment, feedback loop, quality monitoring
+- Backend integrates with existing frontend from 001-complete-user-workflow
+
+---
+
+**Tasks Ready for Execution** - Complete workflow support with USER_WORKFLOW.md alignment

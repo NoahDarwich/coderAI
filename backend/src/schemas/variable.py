@@ -2,12 +2,64 @@
 Pydantic schemas for Variable API requests and responses.
 """
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from src.models.variable import VariableType
+
+
+class UncertaintyHandling(BaseModel):
+    """
+    Schema for uncertainty handling configuration.
+
+    Defines how to handle uncertain extractions.
+    """
+    confidence_threshold: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Minimum confidence score (0-100) to accept extraction"
+    )
+    if_uncertain_action: str = Field(
+        ...,
+        pattern="^(flag|skip|return_best_guess)$",
+        description="Action to take if confidence is below threshold"
+    )
+    multiple_values_action: str = Field(
+        ...,
+        pattern="^(return_all|return_first|concatenate)$",
+        description="How to handle multiple values found"
+    )
+
+
+class ValidationRule(BaseModel):
+    """Schema for a single validation rule."""
+    rule_type: str = Field(..., description="Type of validation (e.g., 'regex', 'range', 'enum')")
+    parameters: Dict[str, Any] = Field(..., description="Rule-specific parameters")
+    error_message: Optional[str] = Field(None, description="Custom error message")
+
+
+class EdgeCases(BaseModel):
+    """
+    Schema for edge case handling configuration.
+
+    Defines how to handle edge cases during extraction.
+    """
+    missing_field_action: str = Field(
+        ...,
+        pattern="^(return_null|return_na|flag)$",
+        description="Action to take when field is missing from document"
+    )
+    validation_rules: Optional[List[ValidationRule]] = Field(
+        None,
+        description="Custom validation rules to apply"
+    )
+    specific_scenarios: Optional[Dict[str, str]] = Field(
+        None,
+        description="Scenario-specific handling instructions (key: scenario, value: instruction)"
+    )
 
 
 class VariableCreate(BaseModel):
@@ -16,6 +68,14 @@ class VariableCreate(BaseModel):
     type: VariableType = Field(..., description="Variable data type")
     instructions: str = Field(..., min_length=10, max_length=5000, description="Extraction instructions")
     classification_rules: Optional[Dict[str, Any]] = Field(None, description="Classification rules (for CATEGORY type)")
+    uncertainty_handling: Optional[UncertaintyHandling] = Field(
+        None,
+        description="Configuration for handling uncertain extractions"
+    )
+    edge_cases: Optional[EdgeCases] = Field(
+        None,
+        description="Configuration for handling edge cases"
+    )
     order: int = Field(..., ge=1, description="Display order in schema")
 
     @field_validator("classification_rules")
@@ -31,6 +91,8 @@ class VariableUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_]+$")
     instructions: Optional[str] = Field(None, min_length=10, max_length=5000)
     classification_rules: Optional[Dict[str, Any]] = None
+    uncertainty_handling: Optional[UncertaintyHandling] = None
+    edge_cases: Optional[EdgeCases] = None
     order: Optional[int] = Field(None, ge=1)
 
 
@@ -41,7 +103,9 @@ class Variable(BaseModel):
     name: str
     type: VariableType
     instructions: str
-    classification_rules: Optional[Dict[str, Any]]
+    classification_rules: Optional[Dict[str, Any]] = None
+    uncertainty_handling: Optional[Dict[str, Any]] = None
+    edge_cases: Optional[Dict[str, Any]] = None
     order: int
     created_at: datetime
     updated_at: datetime

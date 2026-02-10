@@ -19,27 +19,29 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# Virtual environments
-.venv/
+# Virtual Environment
 venv/
-ENV/
 env/
+ENV/
+.venv
+
+# Environment Variables
 .env
+.env.local
 
-# PyCharm
-.idea/
-
-# VS Code
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 *.cover
-.hypothesis/
 
 # Logs
 *.log
@@ -48,23 +50,14 @@ logs/
 # Database
 *.db
 *.sqlite
-*.sqlite3
 
 # OS
 .DS_Store
 Thumbs.db
-*.tmp
-*.swp
 
 # Alembic
-# (keep versions directory, ignore temp files)
-alembic/versions/*.pyc
+alembic/versions/__pycache__/
 
-# Docker
-*.env.local
-.dockerignore
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Temporary files
+*.tmp
+*.bak

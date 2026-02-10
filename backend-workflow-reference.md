@@ -1,7 +1,15 @@
 # Backend Workflow Reference
 
 ## Overview
-The backend processes user inputs and transforms them into structured datasets through a series of steps involving prompt generation, API calls, and data aggregation.
+The backend processes user inputs and transforms them into structured datasets through a configurable extraction pipeline. Each project is user-configurable — users define their own domain, extraction targets, and variables through the frontend UI. The system auto-generates LLM assistant configurations from these definitions, processes documents through LangChain-powered extraction stages, and delivers structured results.
+
+**Key Architecture Decisions:**
+- **LLM Integration**: LangChain 0.3+ for multi-provider abstraction (OpenAI, Anthropic, local models)
+- **Document Ingestion**: All common formats (PDF, DOCX, CSV, JSON, Parquet, plain text)
+- **Assistant Config**: Auto-generated from user-defined variables (not manually configured)
+- **Database**: SQLAlchemy 2.0 (async) + Alembic migrations
+- **Export**: CSV + Excel with filtering, confidence scores, and quality metrics
+- **Deferred (v2)**: Duplicate detection, external API enrichment, advanced job queue
 
 ---
 
@@ -33,9 +41,14 @@ Each variable definition is stored and associated with the project.
 
 ---
 
-### 3. Prompt Generation
+### 3. Prompt Generation (Auto-Generated)
 
-The backend transforms each variable's extraction instructions into a prompt for the OpenAI API. The user's natural language instructions are converted into structured prompts that incorporate project context and specify the expected output format. Each variable gets its own dedicated prompt.
+The backend automatically generates LLM assistant configurations from each variable definition. The system:
+- Incorporates project context (domain, language, document type, unit of observation)
+- Generates system prompts with extraction instructions, uncertainty handling, and edge case rules
+- Selects model parameters (temperature, max_tokens) based on variable type and precision needs
+- Creates JSON response schemas matching the variable type
+- All LLM calls go through LangChain for provider flexibility (OpenAI, Anthropic, local models)
 
 ---
 
@@ -80,11 +93,11 @@ When complete, all extractions are combined into a structured dataset with the s
 
 ### 7. Export & Delivery
 
-The user requests the dataset in a specific format (CSV, Excel, JSON, or custom). The backend generates the file including:
-- Complete dataset with all extracted variables
-- Project metadata
-- Variable definitions (codebook)
-- Processing statistics
+The user requests the dataset in CSV or Excel format. The backend generates the file including:
+- Complete dataset with all extracted variables (wide or long format)
+- Optional confidence scores and source text columns
+- Project metadata and variable definitions (codebook)
+- Processing statistics and quality metrics (success rate, average confidence)
 
 ---
 
@@ -120,5 +133,15 @@ The frontend receives status updates to show appropriate UI states.
 
 ---
 
-**Document Version:** 1.0  
+### Pipeline Architecture Reference
+
+For detailed pipeline stages, LLM integration patterns, and implementation details, see:
+- **[ai_agent_reference.md](ai_agent_reference.md)**: Full pipeline architecture with code patterns
+- **[specs/002-backend-implementation/plan.md](specs/002-backend-implementation/plan.md)**: Implementation plan
+- **[specs/002-backend-implementation/data-model.md](specs/002-backend-implementation/data-model.md)**: Database schema
+
+---
+
+**Document Version:** 2.0
+**Last Updated:** 2026-02-09
 **Purpose:** Backend workflow explanation for frontend development

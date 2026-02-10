@@ -1,59 +1,101 @@
-# Data Extraction Workflow - Backend API
+# Data Extraction Backend
 
-FastAPI backend service for the research data extraction tool.
+FastAPI backend implementing a **user-configurable corpus processing pipeline**. Each project defines its own domain, extraction targets, and variables. The system auto-generates LLM assistant configurations, ingests documents in all common formats, processes them through LangChain-powered extraction stages, and delivers structured datasets.
 
-## Quick Start
+**Pipeline Architecture:** See [ai_agent_reference.md](/ai_agent_reference.md) for detailed pipeline stages, LLM integration, and implementation patterns.
 
-### Prerequisites
+## Tech Stack
+
+- **Framework**: FastAPI 0.100+
+- **Database**: PostgreSQL 15+ with SQLAlchemy 2.0 (async)
+- **LLM Integration**: LangChain 0.3+ (multi-provider: OpenAI, Anthropic, local models)
+- **Document Ingestion**: PyMuPDF (PDF), python-docx (DOCX), pandas + pyarrow (CSV/JSON/Parquet), plain text
+- **Data Export**: pandas + openpyxl (CSV + Excel with filtering and metadata)
+- **Background Jobs**: TBD (job queue strategy to be decided)
+- **Migrations**: Alembic
+
+## Prerequisites
 
 - Python 3.11+
 - PostgreSQL 15+
 - Redis 7+ (optional for MVP)
+- OpenAI API key
 
-### Installation
+## Quick Start
+
+### 1. Setup Virtual Environment
 
 ```bash
-# Create virtual environment
+cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install dev dependencies
-pip install -r requirements-dev.txt
-
-# Copy environment variables
-cp .env.example .env
-# Edit .env with your configuration
 ```
 
-### Database Setup
+### 2. Install Dependencies
 
 ```bash
-# Create database
+pip install -r requirements-dev.txt
+```
+
+### 3. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env and set your configuration:
+# - DATABASE_URL
+# - OPENAI_API_KEY
+# - ALLOWED_ORIGINS
+```
+
+### 4. Setup Database
+
+```bash
+# Create PostgreSQL database
 createdb data_extraction
 
 # Run migrations
 alembic upgrade head
 ```
 
-### Running the Server
+### 5. Run Development Server
 
 ```bash
-# Development mode with auto-reload
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# Production mode
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn src.main:app --reload --port 8000
 ```
 
-### API Documentation
+The API will be available at:
+- API: http://localhost:8000
+- Interactive docs: http://localhost:8000/docs
+- OpenAPI spec: http://localhost:8000/openapi.json
 
-Once the server is running, visit:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- OpenAPI JSON: http://localhost:8000/openapi.json
+## Project Structure
+
+```
+backend/
+├── src/
+│   ├── api/
+│   │   ├── routes/          # API endpoint routes
+│   │   ├── dependencies.py  # FastAPI dependencies
+│   │   └── middleware.py    # CORS, error handling
+│   ├── core/
+│   │   ├── config.py        # Settings management
+│   │   └── database.py      # Database connection
+│   ├── models/              # SQLAlchemy ORM models
+│   ├── schemas/             # Pydantic request/response schemas
+│   ├── services/            # Business logic
+│   │   ├── prompt_generator.py
+│   │   ├── llm_client.py
+│   │   ├── document_processor.py
+│   │   ├── extraction_service.py
+│   │   ├── job_manager.py
+│   │   └── export_service.py
+│   ├── workers/             # Background job workers
+│   └── main.py              # FastAPI app initialization
+├── alembic/                 # Database migrations
+├── tests/                   # Test suite
+├── docker/                  # Docker configuration
+└── requirements.txt         # Python dependencies
+```
 
 ## Development
 
@@ -77,9 +119,9 @@ pytest tests/api/test_projects.py -v
 black src/ tests/
 
 # Lint code
-ruff check src/ tests/
+ruff check src/ tests/ --fix
 
-# Type checking
+# Type checking (optional)
 mypy src/
 ```
 
@@ -95,282 +137,140 @@ alembic upgrade head
 # Rollback one migration
 alembic downgrade -1
 
-# Show current revision
-alembic current
+# View migration history
+alembic history
 ```
 
-## Project Structure
+## API Documentation
+
+### Base URL
 
 ```
-backend/
-├── src/
-│   ├── api/
-│   │   ├── routes/          # API endpoint definitions
-│   │   ├── dependencies.py  # FastAPI dependencies
-│   │   └── middleware.py    # CORS, error handling
-│   ├── core/
-│   │   ├── config.py        # Configuration settings
-│   │   └── database.py      # Database connection
-│   ├── models/              # SQLAlchemy ORM models
-│   ├── schemas/             # Pydantic request/response schemas
-│   ├── services/            # Business logic layer
-│   ├── workers/             # Background job processors
-│   └── main.py              # FastAPI application entry point
-├── tests/
-│   ├── api/                 # API endpoint tests
-│   ├── services/            # Service layer tests
-│   └── integration/         # End-to-end tests
-├── alembic/                 # Database migrations
-├── docker/                  # Docker configuration
-└── requirements.txt         # Python dependencies
+http://localhost:8000/api/v1
 ```
 
-## Docker
+### Key Endpoints
 
-### Build and Run
+**Projects**
+- `POST /projects` - Create project
+- `GET /projects` - List projects
+- `GET /projects/{id}` - Get project details
+- `PUT /projects/{id}` - Update project
+- `DELETE /projects/{id}` - Delete project
+
+**Variables**
+- `GET /projects/{id}/variables` - List variables
+- `POST /projects/{id}/variables` - Create variable
+- `PUT /variables/{id}` - Update variable
+- `DELETE /variables/{id}` - Delete variable
+
+**Documents** (all common formats: PDF, DOCX, TXT, CSV, JSON, Parquet)
+- `POST /projects/{id}/documents` - Upload document(s) or bulk ingest from tabular formats
+- `GET /projects/{id}/documents` - List documents
+- `DELETE /documents/{id}` - Delete document
+
+**Processing**
+- `POST /projects/{id}/jobs` - Create processing job
+- `GET /jobs/{id}` - Get job status
+- `GET /jobs/{id}/results` - Get extraction results
+- `POST /extractions/{id}/feedback` - Submit feedback
+
+**Export** (CSV + Excel with filtering)
+- `POST /projects/{id}/export` - Generate export file (CSV or Excel, with optional confidence scores, source text, codebook)
+
+For complete API documentation, visit http://localhost:8000/docs after starting the server.
+
+## Pipeline Architecture
+
+The processing pipeline runs per document through these stages:
+
+```
+Ingestion (multi-format) → Extraction → Enrichment (LLM per variable) → Post-Processing → Storage → Export
+```
+
+- **Assistant configs** are auto-generated from user-defined variables (not manually configured)
+- **LLM calls** go through LangChain for provider flexibility
+- **Atomic transactions** ensure all-or-nothing per document
+- **Feedback loop** allows users to correct extractions and refine prompts
+
+**Deferred (v2):** Duplicate detection, external API enrichment (geocoding), advanced job queue
+
+## Environment Variables
+
+See `.env.example` for all available configuration options:
+
+- `DATABASE_URL` - PostgreSQL connection URL (required)
+- `OPENAI_API_KEY` - OpenAI API key (required)
+- `REDIS_URL` - Redis connection URL (optional for MVP)
+- `ALLOWED_ORIGINS` - CORS allowed origins (required)
+- `DEBUG` - Enable debug mode (default: True)
+- `LOG_LEVEL` - Logging level (default: INFO)
+
+## Docker Deployment
 
 ```bash
 # Build image
-docker build -f docker/Dockerfile -t backend:latest .
+docker build -f docker/Dockerfile -t data-extraction-backend:latest .
 
 # Run with docker-compose
-docker-compose -f docker/docker-compose.yml up
+cd docker
+docker-compose up
 ```
 
-### Environment Variables
+## Performance Targets
 
-See `.env.example` for all configuration options.
+- API response time: <200ms (p95) for CRUD operations
+- Sample processing (20 docs × 5 vars): <5 minutes with real LLM calls
+- Export generation (100 docs × 10 vars): <3 seconds
+- Concurrent requests: Support 100 concurrent API requests
 
-## API Endpoints
+## Troubleshooting
 
-### Projects
-- `GET /api/v1/projects` - List all projects
-- `POST /api/v1/projects` - Create new project
-- `GET /api/v1/projects/{id}` - Get project details
-- `PUT /api/v1/projects/{id}` - Update project
-- `DELETE /api/v1/projects/{id}` - Delete project
+### Database connection issues
 
-### Variables
-- `GET /api/v1/projects/{id}/variables` - List project variables
-- `POST /api/v1/projects/{id}/variables` - Create variable
-- `GET /api/v1/variables/{id}` - Get variable details
-- `PUT /api/v1/variables/{id}` - Update variable
-- `DELETE /api/v1/variables/{id}` - Delete variable
-
-### Documents
-- `GET /api/v1/projects/{id}/documents` - List documents
-- `POST /api/v1/projects/{id}/documents` - Upload document
-- `DELETE /api/v1/documents/{id}` - Delete document
-
-### Processing
-- `POST /api/v1/projects/{id}/jobs` - Create processing job
-- `GET /api/v1/jobs/{id}` - Get job status
-- `GET /api/v1/jobs/{id}/results` - Get job results
-- `DELETE /api/v1/jobs/{id}` - Cancel job
-
-### Export
-- `POST /api/v1/projects/{id}/export` - Generate export file
-
-## Deployment
-
-### Railway Deployment
-
-Railway provides a simple deployment process for containerized applications.
-
-#### Prerequisites
-- Railway account (https://railway.app)
-- Railway CLI installed: `npm install -g @railway/cli`
-- Docker image built
-
-#### Deployment Steps
-
-1. **Login to Railway**:
 ```bash
-railway login
+# Test database connection
+psql -U postgres -d data_extraction -c "SELECT 1"
+
+# Check DATABASE_URL format
+echo $DATABASE_URL
+# Should be: postgresql+asyncpg://user:pass@host:port/dbname
 ```
 
-2. **Create New Project**:
+### LLM API rate limits
+
+If you encounter rate limit errors:
+1. Check `LLM_RATE_LIMIT_CALLS` and `LLM_RATE_LIMIT_PERIOD` in .env
+2. Reduce concurrent job processing
+3. Add delays between LLM calls
+
+### Alembic migration errors
+
 ```bash
-railway init
+# Check current migration version
+alembic current
+
+# View pending migrations
+alembic heads
+
+# Stamp database at current version (use carefully)
+alembic stamp head
 ```
 
-3. **Add PostgreSQL Database**:
-```bash
-railway add postgres
-```
+## Contributing
 
-4. **Set Environment Variables**:
-```bash
-railway variables set OPENAI_API_KEY=sk-...
-railway variables set ALLOWED_ORIGINS=https://your-frontend.vercel.app
-railway variables set DEBUG=False
-```
-
-5. **Deploy**:
-```bash
-railway up
-```
-
-Railway will automatically:
-- Build your Docker image
-- Provision a PostgreSQL database
-- Set DATABASE_URL environment variable
-- Deploy to production
-
-#### Database Migrations
-
-Run migrations after deployment:
-```bash
-railway run alembic upgrade head
-```
-
-### Render Deployment
-
-Render is another simple platform for deploying web services.
-
-#### Prerequisites
-- Render account (https://render.com)
-- GitHub repository with your code
-
-#### Deployment Steps
-
-1. **Create Web Service**:
-   - Go to Render dashboard
-   - Click "New +" → "Web Service"
-   - Connect your GitHub repository
-   - Configure:
-     - **Name**: data-extraction-api
-     - **Environment**: Python 3
-     - **Build Command**: `pip install -r requirements.txt`
-     - **Start Command**: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-
-2. **Add PostgreSQL Database**:
-   - Click "New +" → "PostgreSQL"
-   - Create database
-   - Copy Internal Database URL
-
-3. **Set Environment Variables**:
-   - In web service settings, add:
-     - `DATABASE_URL` = <PostgreSQL Internal URL>
-     - `OPENAI_API_KEY` = sk-...
-     - `ALLOWED_ORIGINS` = https://your-frontend.vercel.app
-     - `DEBUG` = False
-
-4. **Deploy**:
-   - Render will automatically deploy on push to main branch
-
-5. **Run Migrations**:
-   - In web service shell:
-     ```bash
-     alembic upgrade head
-     ```
-
-### Docker Deployment (Self-Hosted)
-
-For self-hosted deployment on any server with Docker.
-
-#### Prerequisites
-- Docker and Docker Compose installed
-- Server with public IP or domain
-
-#### Steps
-
-1. **Clone Repository**:
-```bash
-git clone <your-repo>
-cd backend
-```
-
-2. **Configure Environment**:
-```bash
-cp .env.example .env
-# Edit .env with production values
-```
-
-3. **Build and Run**:
-```bash
-docker-compose -f docker/docker-compose.yml up -d
-```
-
-4. **Run Migrations**:
-```bash
-docker-compose exec api alembic upgrade head
-```
-
-5. **Set Up Reverse Proxy** (nginx):
-```nginx
-server {
-    listen 80;
-    server_name api.yourdomain.com;
-
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-6. **Set Up SSL** (Let's Encrypt):
-```bash
-sudo certbot --nginx -d api.yourdomain.com
-```
-
-### Health Checks
-
-All deployment platforms can use these endpoints for health monitoring:
-- `/health` - Basic health check
-- `/` - API info and status
-
-### Monitoring and Logging
-
-For production monitoring, consider integrating:
-- **Sentry** for error tracking: https://sentry.io
-- **Datadog** for metrics: https://www.datadoghq.com
-- **Papertrail** for log aggregation: https://www.papertrail.com
-
-Add to requirements.txt:
-```
-sentry-sdk[fastapi]==1.39.0
-```
-
-Configure in `src/main.py`:
-```python
-import sentry_sdk
-
-sentry_sdk.init(
-    dsn="your-sentry-dsn",
-    environment="production",
-    traces_sample_rate=0.1,
-)
-```
-
-### Scaling Considerations
-
-For high-traffic production deployments:
-
-1. **Database Connection Pooling**:
-   - Increase pool_size in database.py
-   - Use PgBouncer for connection pooling
-
-2. **Background Jobs**:
-   - Migrate from FastAPI BackgroundTasks to Arq + Redis
-   - Run separate worker processes
-
-3. **Caching**:
-   - Add Redis for caching frequent queries
-   - Cache prompt generation results
-
-4. **Load Balancing**:
-   - Run multiple API instances behind a load balancer
-   - Use sticky sessions if needed
-
-5. **Rate Limiting**:
-   - Add rate limiting middleware
-   - Prevent API abuse
+1. Follow the implementation tasks in `/specs/002-backend-implementation/tasks.md`
+2. Write tests for new features
+3. Ensure code passes linting and formatting checks
+4. Update API documentation if adding new endpoints
 
 ## License
 
-Proprietary
+See repository LICENSE file.
+
+## Support
+
+For issues and questions, refer to:
+- Implementation plan: `/specs/002-backend-implementation/plan.md`
+- API contracts: `/specs/002-backend-implementation/contracts/`
+- Quickstart guide: `/specs/002-backend-implementation/quickstart.md`

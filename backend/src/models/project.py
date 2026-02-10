@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, Enum, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
@@ -35,6 +35,12 @@ class Project(Base):
     Project model.
 
     Represents a research project with metadata and configuration.
+
+    Attributes:
+        unit_of_observation: JSONB config defining what each row represents
+            - what_each_row_represents: str (e.g., "document", "person", "event")
+            - rows_per_document: str ("one" or "multiple")
+            - entity_identification_pattern: Optional[str] (regex pattern for entity extraction)
     """
     __tablename__ = "projects"
 
@@ -43,6 +49,11 @@ class Project(Base):
     scale = Column(Enum(ProjectScale), nullable=False)
     language = Column(String(50), nullable=False, default="en")
     domain = Column(String(255), nullable=True)
+    unit_of_observation = Column(
+        JSONB,
+        nullable=True,
+        comment="Unit of observation configuration: what_each_row_represents, rows_per_document, entity_identification_pattern"
+    )
     status = Column(Enum(ProjectStatus), nullable=False, default=ProjectStatus.CREATED)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

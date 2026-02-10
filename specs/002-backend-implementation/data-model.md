@@ -292,7 +292,7 @@ Represents an uploaded document to be processed.
 | `project_id` | UUID | FK, NOT NULL | Reference to parent project |
 | `name` | VARCHAR(500) | NOT NULL | Original filename |
 | `content` | TEXT | NOT NULL | Extracted document text |
-| `content_type` | ENUM('PDF', 'DOCX', 'TXT') | NOT NULL | Document file type |
+| `content_type` | ENUM('PDF', 'DOCX', 'TXT', 'CSV', 'JSON', 'PARQUET') | NOT NULL | Document file type (all common formats supported) |
 | `size_bytes` | INTEGER | NOT NULL | File size in bytes |
 | `uploaded_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Upload timestamp |
 
@@ -545,7 +545,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE project_scale AS ENUM ('SMALL', 'LARGE');
 CREATE TYPE project_status AS ENUM ('CREATED', 'SCHEMA_DEFINED', 'SAMPLE_TESTING', 'READY', 'PROCESSING', 'COMPLETE', 'ERROR');
 CREATE TYPE variable_type AS ENUM ('TEXT', 'NUMBER', 'DATE', 'CATEGORY', 'BOOLEAN');
-CREATE TYPE content_type AS ENUM ('PDF', 'DOCX', 'TXT');
+CREATE TYPE content_type AS ENUM ('PDF', 'DOCX', 'TXT', 'CSV', 'JSON', 'PARQUET');
 CREATE TYPE job_type AS ENUM ('SAMPLE', 'FULL');
 CREATE TYPE job_status AS ENUM ('PENDING', 'PROCESSING', 'COMPLETE', 'FAILED', 'CANCELLED');
 CREATE TYPE log_level AS ENUM ('INFO', 'WARNING', 'ERROR');
@@ -666,6 +666,20 @@ CREATE TABLE processing_logs (
 CREATE INDEX idx_logs_job_id ON processing_logs(job_id);
 CREATE INDEX idx_logs_job_created ON processing_logs(job_id, created_at);
 ```
+
+---
+
+---
+
+## Pipeline Architecture Notes
+
+**Updated 2026-02-09**: Data model aligned with pipeline architecture from [ai_agent_reference.md](/ai_agent_reference.md):
+
+- **Document content_type** expanded to support all common formats (PDF, DOCX, TXT, CSV, JSON, Parquet)
+- **Prompt** records are auto-generated from Variable + Project context (not manually created)
+- **LLM calls** go through LangChain for multi-provider abstraction
+- **Export** produces CSV + Excel with filtering, codebook, and quality metrics
+- **Deferred (v2)**: Duplicate detection columns (`is_duplicate`, `duplicate_record_ids`, `merged_to`) not included in v1
 
 ---
 

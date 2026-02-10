@@ -22,6 +22,7 @@ class ExtractionFeedback(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     extraction_id = Column(UUID(as_uuid=True), ForeignKey("extractions.id", ondelete="CASCADE"), nullable=False)
     is_correct = Column(Boolean, nullable=False)
+    correct_value = Column(Text, nullable=True)  # User-provided correct value when is_correct=False
     user_comment = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

@@ -1,6 +1,7 @@
 """
 API routes for processing job management and extraction feedback.
 """
+from collections import defaultdict
 from typing import List, Optional
 from uuid import UUID
 
@@ -748,3 +749,176 @@ async def start_full_processing(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+@router.get("/api/v1/extractions/{extraction_id}", response_model=ExtractionDetail)
+async def get_extraction_detail(
+    extraction_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ExtractionDetail:
+    """
+    Get detailed information about a specific extraction.
+    
+    Includes source document name, variable name, value, confidence score,
+    and source text excerpt.
+    
+    Args:
+        extraction_id: Extraction UUID
+        db: Database session
+    
+    Returns:
+        Detailed extraction information
+    
+    Raises:
+        HTTPException: 404 if extraction not found
+    """
+    # Get extraction with related document and variable
+    from src.schemas.processing import ExtractionDetail
+    
+    result = await db.execute(
+        select(Extraction, Document, Variable)
+        .join(Document, Extraction.document_id == Document.id)
+        .join(Variable, Extraction.variable_id == Variable.id)
+        .where(Extraction.id == extraction_id)
+    )
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Extraction with id {extraction_id} not found",
+        )
+    
+    extraction, document, variable = row
+    
+    # Build detailed response
+    extraction_dict = extraction.__dict__.copy()
+    extraction_dict["document_name"] = document.name
+    extraction_dict["variable_name"] = variable.name
+    
+    return ExtractionDetail.model_validate(extraction_dict)
+
+
+@router.get("/api/v1/jobs/{job_id}/statistics", response_model=JobStatistics)
+async def get_job_statistics(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> JobStatistics:
+    """
+    Get comprehensive statistics for a processing job.
+    
+    Includes overall success rates, per-variable statistics, average confidence
+    scores, and common error patterns.
+    
+    Args:
+        job_id: Job UUID
+        db: Database session
+    
+    Returns:
+        Job statistics
+    
+    Raises:
+        HTTPException: 404 if job not found
+    """
+    from src.schemas.processing import JobStatistics, VariableStatistics
+    
+    # Verify job exists
+    result = await db.execute(
+        select(ProcessingJob).where(ProcessingJob.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job with id {job_id} not found",
+        )
+    
+    # Get all extractions for this job
+    result = await db.execute(
+        select(Extraction, Variable)
+        .join(Variable, Extraction.variable_id == Variable.id)
+        .where(Extraction.job_id == job_id)
+    )
+    extraction_rows = result.all()
+    
+    if not extraction_rows:
+        # Job has no extractions yet
+        return JobStatistics(
+            job_id=job_id,
+            total_documents=len(job.document_ids),
+            documents_processed=0,
+            total_extractions=0,
+            successful_extractions=0,
+            overall_success_rate=0.0,
+            avg_confidence=None,
+            flagged_count=0,
+            variable_statistics=[],
+            common_errors=[]
+        )
+    
+    # Calculate overall statistics
+    total_extractions = len(extraction_rows)
+    successful_extractions = sum(1 for e, _ in extraction_rows if e.value is not None)
+    flagged_count = sum(1 for e, _ in extraction_rows if e.flagged)
+    
+    # Calculate average confidence
+    confidences = [e.confidence for e, _ in extraction_rows if e.confidence is not None]
+    avg_confidence = sum(confidences) / len(confidences) if confidences else None
+    
+    # Calculate per-variable statistics
+    variable_data = defaultdict(lambda: {
+        'name': '',
+        'total': 0,
+        'successful': 0,
+        'confidences': [],
+        'flagged': 0
+    })
+    
+    for extraction, variable in extraction_rows:
+        var_id = str(variable.id)
+        variable_data[var_id]['name'] = variable.name
+        variable_data[var_id]['total'] += 1
+        if extraction.value is not None:
+            variable_data[var_id]['successful'] += 1
+        if extraction.confidence is not None:
+            variable_data[var_id]['confidences'].append(extraction.confidence)
+        if extraction.flagged:
+            variable_data[var_id]['flagged'] += 1
+    
+    variable_statistics = []
+    for var_id, data in variable_data.items():
+        avg_var_confidence = (
+            sum(data['confidences']) / len(data['confidences'])
+            if data['confidences'] else None
+        )
+        success_rate = data['successful'] / data['total'] if data['total'] > 0 else 0.0
+        
+        variable_statistics.append(VariableStatistics(
+            variable_id=UUID(var_id),
+            variable_name=data['name'],
+            total_extractions=data['total'],
+            successful_extractions=data['successful'],
+            success_rate=success_rate,
+            avg_confidence=avg_var_confidence,
+            flagged_count=data['flagged']
+        ))
+    
+    # Get unique document count
+    unique_documents = len(set(e.document_id for e, _ in extraction_rows))
+    
+    # TODO: Implement common error detection from processing logs
+    common_errors = []
+    
+    return JobStatistics(
+        job_id=job_id,
+        total_documents=len(job.document_ids),
+        documents_processed=unique_documents,
+        total_extractions=total_extractions,
+        successful_extractions=successful_extractions,
+        overall_success_rate=successful_extractions / total_extractions if total_extractions > 0 else 0.0,
+        avg_confidence=avg_confidence,
+        flagged_count=flagged_count,
+        variable_statistics=variable_statistics,
+        common_errors=common_errors
+    )

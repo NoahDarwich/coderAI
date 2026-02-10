@@ -103,3 +103,37 @@ class ProjectResults(BaseModel):
     results: List[DocumentResult]
     total_documents: int
     total_extractions: int
+
+
+class ExtractionDetail(Extraction):
+    """Detailed extraction response with additional context."""
+    document_name: str = Field(..., description="Name of the source document")
+    variable_name: str = Field(..., description="Name of the extracted variable")
+
+    class Config:
+        from_attributes = True
+
+
+class VariableStatistics(BaseModel):
+    """Statistics for a single variable's extractions."""
+    variable_id: UUID
+    variable_name: str
+    total_extractions: int
+    successful_extractions: int = Field(..., description="Extractions with non-null values")
+    success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate (0.0-1.0)")
+    avg_confidence: Optional[float] = Field(None, ge=0.0, le=100.0, description="Average confidence score")
+    flagged_count: int = Field(..., description="Number of flagged extractions")
+
+
+class JobStatistics(BaseModel):
+    """Comprehensive statistics for a processing job."""
+    job_id: UUID
+    total_documents: int
+    documents_processed: int
+    total_extractions: int
+    successful_extractions: int
+    overall_success_rate: float = Field(..., ge=0.0, le=1.0, description="Overall success rate")
+    avg_confidence: Optional[float] = Field(None, ge=0.0, le=100.0, description="Average confidence across all extractions")
+    flagged_count: int = Field(..., description="Total flagged extractions")
+    variable_statistics: List[VariableStatistics] = Field(..., description="Per-variable statistics")
+    common_errors: List[str] = Field(default_factory=list, description="Common error patterns")
