@@ -1,42 +1,78 @@
 # coderAI Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-11-23
+Last updated: 2026-02-10
+
+**Primary Reference**: [`CODERAI_REFERENCE.md`](/CODERAI_REFERENCE.md) is the single source of truth for architecture, data model, API design, and pipeline stages. All implementation work should align with that document.
 
 ## Active Technologies
-- Python 3.11+ + FastAPI 0.100+, SQLAlchemy 2.0, Pydantic V2, LangChain 0.3+ (multi-provider LLM), OpenAI Python SDK (002-backend-implementation)
-- PostgreSQL 15+ (primary database), Redis 7+ (job queue — TBD) (002-backend-implementation)
-- Document Ingestion: PyMuPDF (PDF), python-docx (DOCX), pandas + pyarrow (CSV/JSON/Parquet) (002-backend-implementation)
-- Export: pandas + openpyxl (CSV + Excel) (002-backend-implementation)
 
-- TypeScript 5.6+ with Next.js 15 (App Router), React 19 + Next.js 15, React 19, TypeScript 5.6, Tailwind CSS 4.0, shadcn/ui, Zustand (state management), TanStack Query (data fetching), TanStack Table (data grids) (001-complete-user-workflow)
+**Backend**:
+- Python 3.11+ / FastAPI (async) / Pydantic V2
+- SQLAlchemy 2.0 async + Alembic migrations
+- PostgreSQL 16 with Row-Level Security (multi-tenancy)
+- ARQ + Redis 7 (async job queue)
+- LangChain 0.3+ (LLM abstraction: OpenAI primary, multi-provider ready)
+- Document parsing: PyMuPDF (PDF), python-docx (DOCX), BeautifulSoup (HTML)
+- Export: pandas + openpyxl (CSV + Excel)
+- Auth: JWT (access + refresh tokens)
+
+**Frontend**:
+- TypeScript 5.6+ / React 19 / Next.js 15 (App Router)
+- Tailwind CSS 4.0 / shadcn/ui
+- Zustand (state), TanStack Query (data fetching), TanStack Table (grids)
 
 ## Project Structure
 
 ```text
-src/
-tests/
+coderai/
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/         # FastAPI endpoints
+│   │   ├── core/               # Config, security, exceptions
+│   │   ├── db/                 # Models, session, RLS
+│   │   ├── services/           # Business logic
+│   │   ├── agents/             # LLM agents (co-pilot, extractor, refiner)
+│   │   ├── workers/            # ARQ background tasks
+│   │   └── main.py
+│   ├── migrations/             # Alembic
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── app/                # Next.js App Router
+│   │   ├── components/
+│   │   ├── services/           # API clients
+│   │   └── types/
+│   └── package.json
+└── docker-compose.yml
 ```
 
 ## Commands
 
-npm test && npm run lint
+```bash
+# Backend
+cd backend && pytest                    # Run tests
+cd backend && alembic upgrade head      # Run migrations
+cd backend && uvicorn app.main:app --reload  # Dev server
+cd backend && arq app.workers.worker_settings.WorkerSettings  # Start worker
 
-## Code Style
+# Frontend
+cd frontend && npm test && npm run lint
+```
 
-TypeScript 5.6+ with Next.js 15 (App Router), React 19: Follow standard conventions
+## Architecture
 
-## Pipeline Architecture
-- Backend implements a user-configurable corpus processing pipeline (see ai_agent_reference.md)
-- Each project defines its own domain, extraction targets, and variables via the UI
-- LLM assistant configs are auto-generated from variable definitions
-- Pipeline stages: Ingestion → Extraction → Enrichment → Post-Processing → Storage → Export
-- Deferred (v2): Duplicate detection, external API enrichment, advanced job queue
+- **Pipeline**: Upload Documents → Define Variables (AI-assisted) → Sample Run → Review & Refine → Full Run → Export
+- **Pipeline stages per document**: Ingestion → Extraction → Post-Processing → Storage → Export
+- **AI agents**: Co-pilot (setup assistant), Extraction assistants (per-variable), Refinement agent (prompt improvement)
+- **Job system**: ARQ + Redis for async processing (extraction, prompt refinement, export)
+- **Real-time**: WebSocket for job progress updates
+- **Multi-tenancy**: PostgreSQL RLS, database-enforced isolation
+- **LLM resilience**: Retry with exponential backoff + circuit breaker
 
-## Recent Changes
-- 002-backend-implementation: Pipeline architecture alignment (LangChain, multi-format ingestion, auto-generated configs)
-- 002-backend-implementation: Added Python 3.11+ + FastAPI 0.100+, SQLAlchemy 2.0, Pydantic V2, LangChain 0.3+, OpenAI Python SDK
+## Development Phases
 
-- 001-complete-user-workflow: Added TypeScript 5.6+ with Next.js 15 (App Router), React 19 + Next.js 15, React 19, TypeScript 5.6, Tailwind CSS 4.0, shadcn/ui, Zustand (state management), TanStack Query (data fetching), TanStack Table (data grids)
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+1. **Phase 1 (MVP)**: Project CRUD, document upload (PDF/TXT), variable definition, basic extraction, CSV export, single-user
+2. **Phase 2**: Auth + multi-tenancy, entity-level extraction, sample/feedback/full workflow, ARQ jobs, WebSocket, Excel + codebook
+3. **Phase 3**: AI co-pilot (variable suggestions, prompt refinement, guided wizard)
+4. **Phase 4**: Document chunking, parallel processing, observability, rate limiting, DOCX/HTML
+5. **Phase 5 (v2)**: Duplicate detection, external API enrichment, multi-model, team collaboration

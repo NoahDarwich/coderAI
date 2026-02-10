@@ -4,7 +4,7 @@
 **Base URL:** `https://api.yourapp.com/v1`
 **Authentication:** JWT Bearer Token
 **Last Updated:** February 9, 2026
-**Pipeline Reference:** [ai_agent_reference.md](ai_agent_reference.md)
+**Primary Reference:** [CODERAI_REFERENCE.md](CODERAI_REFERENCE.md)
 
 ---
 
@@ -1241,21 +1241,12 @@ export interface Job {
 
 ## Architecture Notes
 
-This API implements a **user-configurable corpus processing pipeline** per [ai_agent_reference.md](ai_agent_reference.md):
+This API implements the architecture defined in [CODERAI_REFERENCE.md](CODERAI_REFERENCE.md):
 
-- **LLM Integration**: All extraction calls go through LangChain 0.3+ for multi-provider support
-- **Document Ingestion**: Supports all common formats (PDF, DOCX, TXT, CSV, JSON, Parquet)
-- **Assistant Config**: Auto-generated from variable definitions (not manually configured)
-- **Pipeline Stages**: Ingestion → Extraction → Enrichment → Post-Processing → Storage → Export
+- **Job Queue**: ARQ + Redis for async background processing
+- **LLM Integration**: LangChain 0.3+ for multi-provider abstraction (OpenAI primary)
+- **AI Agents**: Co-pilot (setup assistant), Extraction assistants (per-variable), Refinement agent
+- **Multi-tenancy**: PostgreSQL Row-Level Security, database-enforced isolation
+- **Real-time**: WebSocket for job progress (`/ws/jobs/{job_id}`)
+- **Pipeline Stages**: Ingestion → Extraction → Post-Processing → Storage → Export
 - **Export**: CSV + Excel with optional confidence scores, source text, codebook, and quality metrics
-- **Deferred (v2)**: Duplicate detection, external API enrichment (geocoding), advanced job queue
-
----
-
-**Document Status:** READY FOR IMPLEMENTATION
-
-**Next Steps:**
-1. Backend: Implement FastAPI endpoints following this spec and pipeline architecture
-2. Frontend: Create API client using these types
-3. Test: Verify all endpoints match specification
-4. Document: Update if any changes during implementation

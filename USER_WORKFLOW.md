@@ -1,5 +1,10 @@
-User Workflow
-Step 1: Project Setup & Document Input
+# User Workflow
+
+**Primary Reference:** See [CODERAI_REFERENCE.md](CODERAI_REFERENCE.md) for architecture, data model, and backend implementation details.
+
+---
+
+## Step 1: Project Setup & Document Input
 User creates a new project and specifies scale:
 
 Small/Experimental: Single document or a couple of documents for testing

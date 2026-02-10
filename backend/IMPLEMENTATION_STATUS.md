@@ -1,312 +1,88 @@
 # Backend Implementation Status
 
-**Last Updated**: 2026-02-09
-**Branch**: `002-backend-implementation`
-**Pipeline Reference**: [ai_agent_reference.md](/ai_agent_reference.md)
+**Last Updated**: 2026-02-10
+**Branch**: `master`
+**Source of Truth**: [CODERAI_REFERENCE.md](/CODERAI_REFERENCE.md)
 
 ---
 
-## Progress Summary
+## Current State
 
-**Total Tasks**: 89
-**Completed**: 28 (31.5%)
-**Remaining**: 61 (68.5%)
+The backend has existing code under `backend/src/` that was built before the current architecture was defined in CODERAI_REFERENCE.md. This code needs to be **restructured and realigned**.
 
----
+### What Exists (under backend/src/)
 
-## ✅ Completed Phases
+| Layer | Files | Status |
+|-------|-------|--------|
+| **Models** | 9 SQLAlchemy models | Need expansion: User + DocumentChunk missing; Variable, Document, Extraction need new fields |
+| **Schemas** | 7 Pydantic modules | Need updates for new fields |
+| **Routes** | 5 route modules | Need restructuring for new directory layout |
+| **Services** | 7 services | Need refactoring: LangChain-only LLM, pipeline stages, post-processing |
+| **Core** | config, database, logging | Need auth, security, exceptions, RLS |
+| **Workers** | Empty `__init__.py` | Need ARQ worker implementation |
+| **Agents** | Does not exist | Need co-pilot, extractor, refiner modules |
 
-### Phase 1: Setup & Project Initialization (12/12 tasks - 100%)
+### Key Gaps vs. CODERAI_REFERENCE.md
 
-- [x] Backend directory structure created
-- [x] Dependencies defined (requirements.txt, requirements-dev.txt)
-- [x] Environment configuration (.env.example)
-- [x] Git ignore patterns (.gitignore)
-- [x] Documentation (README.md)
-- [x] Alembic configuration (alembic.ini, env.py, script.py.mako)
-- [x] Docker setup (Dockerfile, docker-compose.yml)
-- [x] Core configuration module (config.py with Pydantic Settings)
-- [x] Database connection module (database.py with async SQLAlchemy)
-
-**Key Files Created**:
-```
-backend/
-├── .env.example
-├── .gitignore
-├── README.md
-├── requirements.txt
-├── requirements-dev.txt
-├── alembic.ini
-├── alembic/env.py
-├── alembic/script.py.mako
-├── docker/Dockerfile
-├── docker/docker-compose.yml
-├── src/core/config.py
-└── src/core/database.py
-```
+1. **Directory structure**: Currently `backend/src/` → needs `backend/app/`
+2. **No User model or auth**: JWT auth and multi-tenancy not implemented
+3. **No DocumentChunk model**: Large document chunking not supported
+4. **No ARQ workers**: Using FastAPI BackgroundTasks instead of ARQ + Redis
+5. **No Row-Level Security**: No multi-tenancy isolation
+6. **No WebSocket**: No real-time job progress
+7. **No agents directory**: Co-pilot, extractor, refiner not implemented
+8. **Wrong LLM client**: Job manager uses OpenAI SDK directly instead of LangChain
+9. **No post-processing stage**: LLM output goes straight to DB without validation
+10. **No entity-level extraction**: Only document-level supported
+11. **No circuit breaker**: Basic retry only
+12. **Variable model incomplete**: Missing display_name, if_uncertain, if_multiple_values, max_values, default_value, depends_on
+13. **Extraction model incomplete**: Missing entity_index, entity_text, prompt_version, status enum
 
 ---
 
-### Phase 2: Foundational Infrastructure (14/14 tasks - 100%)
+## Development Phases (from CODERAI_REFERENCE.md Section 13)
 
-- [x] Models package initialization
-- [x] All 8 SQLAlchemy ORM models:
-  - Project (with ProjectScale, ProjectStatus enums)
-  - Variable (with VariableType enum)
-  - Prompt (versioned prompts)
-  - Document (with ContentType enum)
-  - ProcessingJob (with JobType, JobStatus enums)
-  - Extraction (with confidence validation)
-  - ExtractionFeedback
-  - ProcessingLog (with LogLevel enum)
-- [x] API dependencies (get_db session factory)
-- [x] Middleware (CORS, error handling, logging)
+### Phase 1: Foundation (MVP)
+- [ ] Project CRUD
+- [ ] Document upload + parsing (PDF, TXT)
+- [ ] Variable definition (manual)
+- [ ] Basic extraction pipeline (sequential)
+- [ ] Export to CSV
+- [ ] Single-user (no auth)
 
-**Key Files Created**:
-```
-backend/src/
-├── models/
-│   ├── __init__.py
-│   ├── project.py
-│   ├── variable.py
-│   ├── prompt.py
-│   ├── document.py
-│   ├── processing_job.py
-│   ├── extraction.py
-│   ├── extraction_feedback.py
-│   └── processing_log.py
-├── api/
-│   ├── dependencies.py
-│   └── middleware.py
-```
+### Phase 2: Core Features
+- [ ] Authentication + multi-tenancy (JWT + RLS)
+- [ ] Entity-level extraction
+- [ ] Sample → Feedback → Full run workflow
+- [ ] Job queue with ARQ + Redis
+- [ ] Real-time progress (WebSocket)
+- [ ] Excel export with codebook
 
-**Database Schema**: 8 tables with proper relationships, indexes, and constraints defined
+### Phase 3: AI Co-pilot
+- [ ] Variable suggestion
+- [ ] Prompt refinement from feedback
+- [ ] Guided setup wizard
 
----
+### Phase 4: Scale & Polish
+- [ ] Document chunking for large files
+- [ ] Parallel processing
+- [ ] Observability (metrics, tracing)
+- [ ] Rate limiting + cost controls
+- [ ] DOCX, HTML format support
 
-### Phase 3: US1 - Project & Schema Management (2/13 tasks - 15%)
-
-- [x] Pydantic schemas for Project (ProjectCreate, ProjectUpdate, Project, ProjectDetail)
-- [x] Pydantic schemas for Variable (VariableCreate, VariableUpdate, Variable, VariableDetail)
-- [ ] Remaining: 11 API route tasks for CRUD operations
-
-**Key Files Created**:
-```
-backend/src/schemas/
-├── project.py
-└── variable.py
-```
+### Phase 5: Advanced (v2)
+- [ ] Duplicate detection
+- [ ] External API enrichment
+- [ ] Multi-model support
+- [ ] Team collaboration
 
 ---
 
-## 📋 Remaining Work
+## Next Steps
 
-### Phase 3: US1 - Project & Schema Management (11 tasks remaining)
-
-**T029-T039**: API Routes Implementation
-- Create `backend/src/api/routes/projects.py`:
-  - POST /api/v1/projects (create)
-  - GET /api/v1/projects (list with pagination)
-  - GET /api/v1/projects/{id} (get details)
-  - PUT /api/v1/projects/{id} (update)
-  - DELETE /api/v1/projects/{id} (delete)
-- Create `backend/src/api/routes/variables.py`:
-  - GET /api/v1/projects/{id}/variables (list)
-  - POST /api/v1/projects/{id}/variables (create)
-  - GET /api/v1/variables/{id} (get details)
-  - PUT /api/v1/variables/{id} (update)
-  - DELETE /api/v1/variables/{id} (delete)
-- Create `backend/src/main.py` (FastAPI app with all routers)
-
----
-
-### Phase 4: US2 - Prompt Generation (10 tasks)
-
-**Services**:
-- Create `backend/src/services/prompt_generator.py`:
-  - generate_prompt() function
-  - Prompt templates for each variable type (TEXT, CATEGORY, NUMBER, DATE, BOOLEAN)
-  - Model configuration logic (temperature, max_tokens)
-- Update API routes to auto-generate prompts on variable create/update
-
----
-
-### Phase 5: US3 - Sample Processing (12 tasks)
-
-**Services & Routes**:
-- Create `backend/src/schemas/document.py`
-- Create `backend/src/schemas/processing.py`
-- Create `backend/src/services/document_processor.py` (PDF/DOCX/TXT parsing)
-- Create `backend/src/services/llm_client.py` (LangChain integration)
-- Create `backend/src/services/extraction_service.py`
-- Create `backend/src/api/routes/documents.py`
-- Create `backend/src/api/routes/processing.py`
-- Create `backend/src/services/job_manager.py`
-- Create `backend/src/schemas/feedback.py`
-
----
-
-### Phase 6: US4 - Full Batch Processing (11 tasks)
-
-**Job Processing**:
-- Implement full processing job type
-- Add progress tracking
-- Add error logging and resilience
-- Add job cancellation
-- Implement asynchronous processing (FastAPI BackgroundTasks)
-- Add job results endpoint
-
----
-
-### Phase 7: US5 - Data Export (9 tasks)
-
-**Export Services**:
-- Create `backend/src/schemas/export.py`
-- Create `backend/src/services/export_service.py`:
-  - CSV wide format (1 row per document)
-  - CSV long format (1 row per extraction)
-  - Excel export
-  - JSON export
-  - Optional confidence scores
-  - Optional source text
-- Create `backend/src/api/routes/exports.py`
-
----
-
-### Phase 8: Polish & Cross-Cutting (8 tasks)
-
-**Testing & Validation**:
-- Request validation (all endpoints)
-- RFC 7807 error format
-- Database indexes
-- Test fixtures (conftest.py)
-- API tests
-- Service tests
-- Coverage verification (>80%)
-- Deployment documentation
-
----
-
-## 🏗️ Architecture Overview
-
-### Pipeline Architecture (Updated 2026-02-09)
-
-The backend implements a **user-configurable corpus processing pipeline** per [ai_agent_reference.md](/ai_agent_reference.md):
-- **Each project** defines its own domain, extraction targets, and variables via the UI
-- **Assistant configs** are auto-generated from variable definitions (not manually configured)
-- **LLM calls** go through LangChain for multi-provider abstraction
-- **Documents** are ingested from all common formats (PDF, DOCX, CSV, JSON, Parquet, TXT)
-- **Export** produces CSV + Excel with filtering, confidence scores, and quality metrics
-- **Deferred (v2)**: Duplicate detection, external API enrichment, advanced job queue
-
-### Technology Stack
-
-- **Language**: Python 3.11+
-- **Web Framework**: FastAPI 0.104+
-- **ORM**: SQLAlchemy 2.0 (async)
-- **Database**: PostgreSQL 15+ (with asyncpg driver)
-- **Validation**: Pydantic V2
-- **LLM Integration**: LangChain 0.3+ (multi-provider: OpenAI, Anthropic, local models)
-- **Document Ingestion**: PyMuPDF (PDF), python-docx (DOCX), pandas + pyarrow (CSV/JSON/Parquet)
-- **Data Export**: pandas + openpyxl (CSV + Excel)
-- **Migrations**: Alembic 1.13+
-- **Testing**: pytest, pytest-asyncio, pytest-cov
-- **Code Quality**: black, ruff, mypy
-
-### Project Structure
-
-```
-backend/
-├── src/
-│   ├── api/
-│   │   ├── routes/          # API endpoints (TODO)
-│   │   ├── dependencies.py  # ✅ Database session dependency
-│   │   └── middleware.py    # ✅ CORS, error handling
-│   ├── core/
-│   │   ├── config.py        # ✅ Settings management
-│   │   └── database.py      # ✅ Async SQLAlchemy engine
-│   ├── models/              # ✅ 8 ORM models (100% complete)
-│   ├── schemas/             # ✅ Project, Variable schemas (partial)
-│   ├── services/            # TODO: Business logic layer
-│   ├── workers/             # TODO: Background job processing
-│   └── main.py              # TODO: FastAPI app entry point
-├── tests/                   # TODO: Test suite
-├── alembic/                 # ✅ Migration configuration
-└── docker/                  # ✅ Containerization setup
-```
-
----
-
-## 📚 Planning Documentation
-
-All planning artifacts are in `specs/002-backend-implementation/`:
-
-- **spec.md**: Feature specification with 5 user stories (all P1/MVP)
-- **plan.md**: Implementation plan with technical decisions
-- **research.md**: Technology choices and rationale
-- **data-model.md**: Entity-relationship diagrams and database schema
-- **contracts/openapi.yaml**: Complete API specification (31 endpoints)
-- **quickstart.md**: 5-week implementation guide
-- **tasks.md**: 89 tasks across 8 phases (28 completed, 61 remaining)
-
----
-
-## 🚀 Next Steps
-
-### To Continue Implementation:
-
-1. **Complete Phase 3** (US1 - Project & Schema Management):
-   ```bash
-   # Implement API routes for projects and variables
-   # Create main.py to wire everything together
-   # Test CRUD operations via /docs
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-3. **Setup Database**:
-   ```bash
-   createdb data_extraction
-   alembic upgrade head
-   ```
-
-4. **Run Development Server**:
-   ```bash
-   uvicorn src.main:app --reload
-   ```
-
-### Implementation Pattern
-
-Each remaining phase follows this pattern:
-
-1. Create Pydantic schemas (request/response validation)
-2. Create service layer (business logic)
-3. Create API routes (endpoint handlers)
-4. Wire routes into main.py
-5. Test via Swagger UI (/docs)
-
----
-
-## 📊 Metrics
-
-- **Lines of Code**: ~4,929 (35 files)
-- **Models**: 8/8 (100%)
-- **Schemas**: 2/7 (29%)
-- **Services**: 0/6 (0%)
-- **API Routes**: 0/5 (0%)
-- **Tests**: 0% coverage (not started)
-
----
-
-## 🔗 Related Resources
-
-- OpenAPI Specification: `specs/002-backend-implementation/contracts/openapi.yaml`
-- Database Schema: `specs/002-backend-implementation/data-model.md`
-- Research Decisions: `specs/002-backend-implementation/research.md`
-- Implementation Tasks: `specs/002-backend-implementation/tasks.md`
+1. **Restructure directory**: Move `backend/src/` → `backend/app/`
+2. **Update models**: Add User, DocumentChunk; expand Variable, Document, Extraction
+3. **Implement ARQ**: Replace BackgroundTasks with ARQ + Redis workers
+4. **Add auth**: JWT auth middleware + RLS setup
+5. **Fix LLM pipeline**: Wire through LangChain, add post-processing stage
+6. **Add agents**: Create co-pilot, extractor, refiner modules
