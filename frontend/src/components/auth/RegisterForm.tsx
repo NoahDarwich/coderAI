@@ -12,9 +12,8 @@ import { useAuthStore } from '@/lib/store/authStore';
 import { Loader2 } from 'lucide-react';
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -26,8 +25,12 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export function RegisterForm() {
   const router = useRouter();
   const registerUser = useAuthStore((state) => state.register);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const storeError = useAuthStore((state) => state.error);
+  const storeLoading = useAuthStore((state) => state.isLoading);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const isLoading = storeLoading;
+  const error = localError || storeError;
 
   const {
     register,
@@ -38,37 +41,18 @@ export function RegisterForm() {
   });
 
   const onSubmit = async (data: RegisterFormData) => {
-    setIsLoading(true);
-    setError(null);
+    setLocalError(null);
 
     try {
-      await registerUser(data.name, data.email, data.password);
+      await registerUser(data.email, data.password);
       router.push('/dashboard');
     } catch (err) {
-      setError('Registration failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+      setLocalError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
     }
   };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Full Name</Label>
-        <Input
-          id="name"
-          type="text"
-          placeholder="John Doe"
-          {...register('name')}
-          disabled={isLoading}
-        />
-        {errors.name && (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            {errors.name.message}
-          </p>
-        )}
-      </div>
-
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -90,7 +74,7 @@ export function RegisterForm() {
         <Input
           id="password"
           type="password"
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
           {...register('password')}
           disabled={isLoading}
         />
@@ -131,10 +115,6 @@ export function RegisterForm() {
           'Create Account'
         )}
       </Button>
-
-      <p className="text-xs text-slate-600 dark:text-slate-400 text-center">
-        Phase 1: Mock authentication - registration always succeeds
-      </p>
     </form>
   );
 }

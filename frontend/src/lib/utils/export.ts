@@ -158,7 +158,7 @@ export function exportExtractionResults(
   }
 
   // Generate CSV
-  const csv = config.format === 'wide'
+  const csv = (config.format === 'CSV_WIDE' || config.format === 'wide' as any)
     ? extractionResultsToCSVWide(filteredResults, config)
     : extractionResultsToCSVLong(filteredResults, config);
 
@@ -203,7 +203,7 @@ export function estimateCSVSize(
   config: ExportConfig
 ): string {
   const filteredResults = filterExtractionResults(results, config);
-  const csv = config.format === 'wide'
+  const csv = (config.format === 'CSV_WIDE' || config.format === 'wide' as any)
     ? extractionResultsToCSVWide(filteredResults, config)
     : extractionResultsToCSVLong(filteredResults, config);
 

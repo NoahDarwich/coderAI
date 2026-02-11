@@ -19,7 +19,6 @@ import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { useProjectStore } from '@/store/projectStore';
 import { Document } from '@/types';
 import { generateId } from '@/lib/utils';
-import { mockDocuments } from '@/mocks/mockDocuments';
 import { apiClient } from '@/lib/api/client';
 import { useDocuments } from '@/lib/api/documents';
 
@@ -45,7 +44,17 @@ export default function DocumentsPage() {
   // Update local state when API data changes
   useEffect(() => {
     if (apiDocuments) {
-      setDocuments(apiDocuments);
+      // Map from API Document to @/types Document
+      setDocuments(apiDocuments.map((d) => ({
+        id: d.id,
+        projectId: d.projectId,
+        fileName: d.filename || d.name,
+        fileType: d.fileType as Document['fileType'],
+        fileSize: d.fileSize,
+        uploadedAt: d.uploadedAt,
+        status: 'uploaded' as Document['status'],
+        contentPreview: (d as any).contentPreview,
+      })));
     }
   }, [apiDocuments]);
 
@@ -59,15 +68,14 @@ export default function DocumentsPage() {
         id: generateId(),
         projectId,
         fileName: file.name,
-        fileType: file.name.endsWith('.pdf')
+        fileType: (file.name.endsWith('.pdf')
           ? 'pdf'
           : file.name.endsWith('.docx')
           ? 'docx'
-          : 'txt',
+          : 'txt') as Document['fileType'],
         fileSize: file.size,
         uploadedAt: new Date().toISOString(),
-        status: 'uploaded',
-        contentPreview: 'Sample document content preview...',
+        status: 'uploaded' as Document['status'],
       }));
 
       setDocuments((prev) => [...prev, ...newDocuments]);
@@ -142,7 +150,7 @@ export default function DocumentsPage() {
           id: backendDoc.id,
           projectId: backendDoc.project_id,
           fileName: backendDoc.name,
-          fileType: backendDoc.content_type.toLowerCase() as 'pdf' | 'docx' | 'txt',
+          fileType: (backendDoc.content_type || 'txt').toLowerCase() as Document['fileType'],
           fileSize: backendDoc.size_bytes,
           uploadedAt: backendDoc.uploaded_at,
           status: 'uploaded',

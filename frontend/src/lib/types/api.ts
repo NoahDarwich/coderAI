@@ -22,8 +22,12 @@ export interface Project {
   userId: string;
   name: string;
   description: string;
-  status: 'draft' | 'processing' | 'completed' | 'error';
+  status: 'draft' | 'schema_defined' | 'schema_approved' | 'sample_testing' | 'ready' | 'processing' | 'completed' | 'error';
   documentCount: number;
+  scale?: string;
+  language?: string;
+  domain?: string;
+  unitOfObservation?: Record<string, unknown>;
   schemaConfig?: SchemaConfig;
   createdAt: string;
   updatedAt: string;
@@ -35,11 +39,18 @@ export interface Project {
 export interface Document {
   id: string;
   projectId: string;
+  /** @deprecated Use name */
   filename: string;
-  fileType: 'pdf' | 'docx' | 'txt';
-  fileSize: number; // bytes
-  content?: string; // Full text content (not always loaded)
-  status: 'pending' | 'uploaded' | 'parsing' | 'parsed' | 'processing' | 'completed' | 'error';
+  name: string;
+  /** @deprecated Use contentType */
+  fileType: 'pdf' | 'docx' | 'txt' | 'html';
+  contentType: 'pdf' | 'docx' | 'txt' | 'html';
+  /** @deprecated Use sizeBytes */
+  fileSize: number;
+  sizeBytes: number;
+  wordCount?: number;
+  content?: string;
+  status: 'pending' | 'uploaded' | 'parsed' | 'ready' | 'processing' | 'completed' | 'failed' | 'error';
   errorMessage?: string;
   uploadedAt: string;
 }
@@ -55,16 +66,22 @@ export interface ChatMessage {
 }
 
 /**
- * Schema Variable Definition
+ * Variable Definition (replaces SchemaVariable)
  */
-export interface SchemaVariable {
+export interface Variable {
   id: string;
   name: string;
-  type: 'date' | 'location' | 'entity' | 'custom' | 'classification';
-  description: string;
-  prompt?: string; // The extraction prompt for this variable
-  categories?: string[]; // For classification types
+  type: 'TEXT' | 'NUMBER' | 'DATE' | 'CATEGORY' | 'BOOLEAN' | 'LOCATION';
+  instructions: string;
+  /** @deprecated Use instructions */
+  description?: string;
+  prompt?: string;
+  categories?: string[];
+  order?: number;
 }
+
+/** @deprecated Use Variable */
+export type SchemaVariable = Variable;
 
 /**
  * Extraction Schema Configuration
@@ -73,9 +90,9 @@ export interface SchemaConfig {
   id: string;
   projectId: string;
   conversationHistory: ChatMessage[];
-  variables: SchemaVariable[];
-  prompts: Record<string, string>; // Variable name -> extraction prompt
-  approved?: boolean; // Whether the schema has been approved by the user
+  variables: Variable[];
+  prompts: Record<string, string>;
+  approved?: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -87,7 +104,7 @@ export interface SchemaConfig {
 export interface ExtractionDataPoint {
   value: string | number | null;
   confidence: number; // 0-100
-  sourceText?: string; // The text snippet this was extracted from
+  sourceText?: string;
 }
 
 /**
@@ -98,7 +115,7 @@ export interface ExtractionResult {
   documentId: string;
   documentName: string;
   schemaId: string;
-  data: Record<string, ExtractionDataPoint>; // Variable name -> extracted data
+  data: Record<string, ExtractionDataPoint>;
   flagged: boolean;
   reviewNotes?: string;
   extractedAt: string;
@@ -111,12 +128,12 @@ export interface ProcessingJob {
   id: string;
   projectId: string;
   type: 'sample' | 'full';
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress: number; // 0-100
   totalDocuments: number;
   processedDocuments: number;
   currentDocument?: string;
-  estimatedTimeRemaining?: number; // seconds
+  estimatedTimeRemaining?: number;
   startedAt?: string;
   completedAt?: string;
   errorMessage?: string;
@@ -147,7 +164,7 @@ export interface PaginatedResponse<T> {
  * Export Configuration
  */
 export interface ExportConfig {
-  format: 'wide' | 'long';
+  format: 'CSV_WIDE' | 'CSV_LONG' | 'EXCEL' | 'JSON' | 'CODEBOOK';
   includeConfidence: boolean;
   includeSourceText: boolean;
   includeFlags: boolean;
@@ -166,11 +183,10 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  name?: string;
 }
 
 export interface AuthResponse {
-  user: User;
-  token: string;
-  expiresAt: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenType?: string;
 }

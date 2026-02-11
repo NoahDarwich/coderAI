@@ -14,6 +14,8 @@ import {
   Tag,
   Type,
   List,
+  Hash,
+  ToggleLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,16 +27,17 @@ interface VariableCardProps {
 export function VariableCard({ variable, className }: VariableCardProps) {
   const getTypeIcon = (type: SchemaVariable['type']) => {
     switch (type) {
-      case 'date':
+      case 'DATE':
         return <Calendar className="h-4 w-4" />;
-      case 'location':
+      case 'LOCATION':
         return <MapPin className="h-4 w-4" />;
-      case 'classification':
+      case 'CATEGORY':
         return <List className="h-4 w-4" />;
-      case 'entity':
-        return <Tag className="h-4 w-4" />;
-      case 'custom':
-        return <Type className="h-4 w-4" />;
+      case 'NUMBER':
+        return <Hash className="h-4 w-4" />;
+      case 'BOOLEAN':
+        return <ToggleLeft className="h-4 w-4" />;
+      case 'TEXT':
       default:
         return <Type className="h-4 w-4" />;
     }
@@ -42,11 +45,11 @@ export function VariableCard({ variable, className }: VariableCardProps) {
 
   const getTypeBadgeVariant = (type: SchemaVariable['type']) => {
     switch (type) {
-      case 'date':
+      case 'DATE':
         return 'default';
-      case 'location':
+      case 'LOCATION':
         return 'secondary';
-      case 'classification':
+      case 'CATEGORY':
         return 'outline';
       default:
         return 'outline';
@@ -75,7 +78,7 @@ export function VariableCard({ variable, className }: VariableCardProps) {
 
           {/* Description */}
           <p className="text-sm text-muted-foreground mb-2">
-            {variable.description}
+            {variable.instructions || variable.description}
           </p>
 
           {/* Prompt */}
@@ -85,8 +88,8 @@ export function VariableCard({ variable, className }: VariableCardProps) {
             </div>
           )}
 
-          {/* Categories (for classification type) */}
-          {variable.type === 'classification' && variable.categories && (
+          {/* Categories (for CATEGORY type) */}
+          {variable.type === 'CATEGORY' && variable.categories && (
             <div className="mt-2">
               <p className="text-xs font-medium text-muted-foreground mb-1">
                 Categories:

@@ -113,13 +113,7 @@ export default function ResultsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {!isLoading && results.length > 0 && (
-              <ExportModal
-                results={results}
-                variables={variables}
-                documentNames={documentNames}
-              />
-            )}
+            {/* TODO: ExportModal not yet implemented */}
             <Button
               variant="outline"
               onClick={() => router.push('/projects')}

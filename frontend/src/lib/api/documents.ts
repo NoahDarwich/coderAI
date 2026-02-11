@@ -11,6 +11,7 @@ import {
   deleteMockDocument,
 } from '@/mocks/documents';
 import { apiClient } from './client';
+import { BackendDocument, transformDocument } from './transforms';
 
 /**
  * Query Keys
@@ -22,30 +23,6 @@ export const documentKeys = {
   details: () => [...documentKeys.all, 'detail'] as const,
   detail: (id: string) => [...documentKeys.details(), id] as const,
 };
-
-// Backend document types
-interface BackendDocument {
-  id: string;
-  project_id: string;
-  name: string;
-  content_type: 'PDF' | 'DOCX' | 'TXT';
-  size_bytes: number;
-  uploaded_at: string;
-  content_preview?: string;
-}
-
-// Transform backend document to frontend format
-function transformBackendDocument(backendDoc: BackendDocument): Document {
-  return {
-    id: backendDoc.id,
-    projectId: backendDoc.project_id,
-    filename: backendDoc.name,
-    fileType: backendDoc.content_type.toLowerCase() as 'pdf' | 'docx' | 'txt',
-    fileSize: backendDoc.size_bytes,
-    uploadedAt: backendDoc.uploaded_at,
-    status: 'uploaded',
-  };
-}
 
 // Mock API functions
 const mockDocumentApi = {
@@ -75,7 +52,7 @@ const realDocumentApi = {
     const documents = await apiClient.get<BackendDocument[]>(
       `/api/v1/projects/${projectId}/documents`
     );
-    return documents.map(transformBackendDocument);
+    return documents.map(transformDocument);
   },
 
   upload: async (projectId: string, file: File): Promise<Document> => {
@@ -83,7 +60,7 @@ const realDocumentApi = {
       `/api/v1/projects/${projectId}/documents`,
       file
     );
-    return transformBackendDocument(document);
+    return transformDocument(document);
   },
 
   delete: async (documentId: string): Promise<void> => {

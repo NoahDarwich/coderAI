@@ -5,68 +5,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
-
-/**
- * Backend Types (matching backend schema)
- */
-export interface BackendProcessingJob {
-  id: string;
-  project_id: string;
-  job_type: 'SAMPLE' | 'FULL';
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETE' | 'FAILED' | 'CANCELLED';
-  progress: number;
-  document_ids: string[];
-  created_at: string;
-  updated_at: string;
-  completed_at?: string;
-}
-
-export interface BackendJobResults {
-  job_id: string;
-  project_id: string;
-  total_extractions: number;
-  extractions: BackendExtraction[];
-}
-
-export interface BackendExtraction {
-  id: string;
-  job_id: string;
-  document_id: string;
-  variable_id: string;
-  value: any;
-  confidence: number;
-  source_text?: string;
-  flagged: boolean;
-  created_at: string;
-}
-
-export interface BackendProjectResults {
-  project_id: string;
-  total_documents: number;
-  documents: BackendDocumentResult[];
-}
-
-export interface BackendDocumentResult {
-  document_id: string;
-  document_name: string;
-  data: Record<string, {
-    value: any;
-    confidence: number;
-    source_text?: string;
-  }>;
-  flagged: boolean;
-  extracted_at: string;
-  average_confidence?: number;
-}
-
-export interface BackendProcessingLog {
-  id: string;
-  job_id: string;
-  document_id?: string;
-  log_level: 'INFO' | 'WARNING' | 'ERROR';
-  message: string;
-  created_at: string;
-}
+import {
+  BackendProcessingJob,
+  BackendJobResults,
+  BackendProjectResults,
+  BackendProcessingLog,
+  transformJob,
+} from './transforms';
 
 /**
  * Frontend Types (for UI compatibility)
@@ -75,7 +20,7 @@ export interface ProcessingJob {
   id: string;
   projectId: string;
   type: 'sample' | 'full';
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   documentIds: string[];
   totalDocuments: number;
@@ -93,16 +38,13 @@ export interface ProcessingLog {
 }
 
 /**
- * Transform backend job to frontend format
+ * Transform backend job with logs to ProcessingJob with logs
  */
-function transformBackendJob(backendJob: BackendProcessingJob, logs: BackendProcessingLog[] = []): ProcessingJob {
-  const statusMap: Record<BackendProcessingJob['status'], ProcessingJob['status']> = {
-    'PENDING': 'pending',
-    'PROCESSING': 'processing',
-    'COMPLETE': 'completed',
-    'FAILED': 'failed',
-    'CANCELLED': 'cancelled',
-  };
+function transformBackendJobWithLogs(
+  backendJob: BackendProcessingJob,
+  logs: BackendProcessingLog[] = []
+): ProcessingJob {
+  const base = transformJob(backendJob);
 
   const logLevelMap: Record<BackendProcessingLog['log_level'], ProcessingLog['level']> = {
     'INFO': 'info',
@@ -110,20 +52,10 @@ function transformBackendJob(backendJob: BackendProcessingJob, logs: BackendProc
     'ERROR': 'error',
   };
 
-  const totalDocuments = backendJob.document_ids.length;
-  const processedDocuments = Math.round((backendJob.progress / 100) * totalDocuments);
-
   return {
-    id: backendJob.id,
-    projectId: backendJob.project_id,
-    type: backendJob.job_type.toLowerCase() as 'sample' | 'full',
-    status: statusMap[backendJob.status] || 'pending',
-    progress: backendJob.progress,
-    documentIds: backendJob.document_ids,
-    totalDocuments,
-    processedDocuments,
-    startedAt: backendJob.created_at,
-    completedAt: backendJob.completed_at,
+    ...base,
+    startedAt: base.startedAt || new Date().toISOString(),
+    documentIds: backendJob.document_ids || [],
     logs: logs.map(log => ({
       timestamp: log.created_at,
       level: logLevelMap[log.log_level] || 'info',
@@ -165,7 +97,6 @@ const mockProcessingApi = {
   getJobStatus: async (jobId: string): Promise<ProcessingJob> => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // Mock: simulate progress
     const progress = Math.min(100, Math.floor(Math.random() * 30) + 50);
 
     return {
@@ -193,7 +124,7 @@ const mockProcessingApi = {
     };
   },
 
-  cancelJob: async (jobId: string): Promise<void> => {
+  cancelJob: async (_jobId: string): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 300));
   },
 };
@@ -215,7 +146,7 @@ const realProcessingApi = {
       }
     );
 
-    return transformBackendJob(response);
+    return transformBackendJobWithLogs(response);
   },
 
   getJobStatus: async (jobId: string): Promise<ProcessingJob> => {
@@ -223,30 +154,22 @@ const realProcessingApi = {
       `/api/v1/jobs/${jobId}`
     );
 
-    // Also fetch logs if available
     let logs: BackendProcessingLog[] = [];
     try {
-      // Backend returns logs in job detail, but let's handle both cases
       logs = (response as any).logs || [];
-    } catch (error) {
-      // Logs endpoint might not exist, that's ok
+    } catch {
+      // Logs endpoint might not exist
     }
 
-    return transformBackendJob(response, logs);
+    return transformBackendJobWithLogs(response, logs);
   },
 
   getJobResults: async (jobId: string): Promise<BackendJobResults> => {
-    const response = await apiClient.get<BackendJobResults>(
-      `/api/v1/jobs/${jobId}/results`
-    );
-    return response;
+    return apiClient.get<BackendJobResults>(`/api/v1/jobs/${jobId}/results`);
   },
 
   getProjectResults: async (projectId: string): Promise<BackendProjectResults> => {
-    const response = await apiClient.get<BackendProjectResults>(
-      `/api/v1/projects/${projectId}/results`
-    );
-    return response;
+    return apiClient.get<BackendProjectResults>(`/api/v1/projects/${projectId}/results`);
   },
 
   cancelJob: async (jobId: string): Promise<void> => {
@@ -285,10 +208,7 @@ export function useCreateJob(projectId: string) {
       documentIds: string[];
     }) => processingApi.createJob(projectId, jobType, documentIds),
     onSuccess: (job) => {
-      // Cache the created job
       queryClient.setQueryData(processingKeys.job(job.id), job);
-
-      // Invalidate jobs list
       queryClient.invalidateQueries({ queryKey: processingKeys.jobs() });
     },
   });
@@ -305,8 +225,8 @@ export function useJobStatus(jobId: string | null, enabled: boolean = true) {
       return processingApi.getJobStatus(jobId);
     },
     enabled: enabled && !!jobId,
-    refetchInterval: (data) => {
-      // Stop polling when job is complete, failed, or cancelled
+    refetchInterval: (query) => {
+      const data = query.state.data;
       if (!data) return false;
 
       if (data.status === 'completed' ||
@@ -315,11 +235,10 @@ export function useJobStatus(jobId: string | null, enabled: boolean = true) {
         return false;
       }
 
-      // Poll every 2 seconds while processing
       return 2000;
     },
     refetchIntervalInBackground: true,
-    staleTime: 1000, // Consider data stale after 1 second
+    staleTime: 1000,
   });
 }
 
@@ -334,7 +253,7 @@ export function useJobResults(jobId: string | null, enabled: boolean = true) {
       return processingApi.getJobResults(jobId);
     },
     enabled: enabled && !!jobId,
-    staleTime: 1000 * 60 * 5, // Results don't change, cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 }
 
@@ -346,7 +265,6 @@ export function useProjectResults(projectId: string, enabled: boolean = true) {
     queryKey: processingKeys.projectResults(projectId),
     queryFn: () => {
       if (apiClient.useMockData) {
-        // Mock mode - return empty results
         return {
           project_id: projectId,
           total_documents: 0,
@@ -356,7 +274,7 @@ export function useProjectResults(projectId: string, enabled: boolean = true) {
       return realProcessingApi.getProjectResults(projectId);
     },
     enabled: enabled && !!projectId,
-    staleTime: 1000 * 60 * 2, // Cache for 2 minutes
+    staleTime: 1000 * 60 * 2,
   });
 }
 
@@ -369,8 +287,10 @@ export function useCancelJob() {
   return useMutation({
     mutationFn: (jobId: string) => processingApi.cancelJob(jobId),
     onSuccess: (_, jobId) => {
-      // Invalidate job status to refetch
       queryClient.invalidateQueries({ queryKey: processingKeys.job(jobId) });
     },
   });
 }
+
+// Re-export backend types for consumers
+export type { BackendJobResults, BackendProjectResults, BackendProcessingLog } from './transforms';

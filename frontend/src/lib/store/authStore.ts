@@ -1,59 +1,162 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface User {
   id: string;
   email: string;
-  name: string;
 }
 
 interface AuthState {
   user: User | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
 }
 
-// TODO(Phase 2): Replace with real authentication
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return {};
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
+      isLoading: false,
+      error: null,
 
       login: async (email: string, password: string) => {
-        // Mock authentication - always succeeds
-        await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate API call
+        set({ isLoading: true, error: null });
+        try {
+          const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
 
-        const mockUser: User = {
-          id: '1',
-          email,
-          name: email.split('@')[0],
-        };
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || 'Invalid email or password');
+          }
 
-        set({ user: mockUser, isAuthenticated: true });
+          const data = await res.json();
+          const payload = decodeJwtPayload(data.access_token);
+
+          const user: User = {
+            id: (payload.sub as string) || '',
+            email,
+          };
+
+          document.cookie = 'has-auth-token=1; path=/';
+
+          set({
+            user,
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (err) {
+          set({
+            isLoading: false,
+            error: err instanceof Error ? err.message : 'Login failed',
+          });
+          throw err;
+        }
       },
 
-      register: async (name: string, email: string, password: string) => {
-        // Mock registration - always succeeds
-        await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate API call
+      register: async (email: string, password: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const res = await fetch(`${API_URL}/api/v1/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
 
-        const mockUser: User = {
-          id: '1',
-          email,
-          name,
-        };
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || 'Registration failed');
+          }
 
-        set({ user: mockUser, isAuthenticated: true });
+          // Auto-login after registration
+          const loginRes = await fetch(`${API_URL}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (!loginRes.ok) {
+            throw new Error('Registration succeeded but auto-login failed');
+          }
+
+          const loginData = await loginRes.json();
+          const payload = decodeJwtPayload(loginData.access_token);
+
+          const user: User = {
+            id: (payload.sub as string) || '',
+            email,
+          };
+
+          document.cookie = 'has-auth-token=1; path=/';
+
+          set({
+            user,
+            accessToken: loginData.access_token,
+            refreshToken: loginData.refresh_token,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (err) {
+          set({
+            isLoading: false,
+            error: err instanceof Error ? err.message : 'Registration failed',
+          });
+          throw err;
+        }
       },
 
       logout: () => {
-        set({ user: null, isAuthenticated: false });
+        document.cookie = 'has-auth-token=; path=/; max-age=0';
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+        });
+      },
+
+      setTokens: (accessToken: string, refreshToken: string) => {
+        set({ accessToken, refreshToken });
       },
     }),
     {
       name: 'auth-storage',
+      partialize: (state) => ({
+        user: state.user,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 );

@@ -65,14 +65,19 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
 
     try {
       // Transform variables to the format expected by the API
+      const typeMap: Record<string, SchemaVariable['type']> = {
+        'text': 'TEXT',
+        'number': 'NUMBER',
+        'date': 'DATE',
+        'category': 'CATEGORY',
+        'boolean': 'BOOLEAN',
+      };
+
       const schemaVariables: SchemaVariable[] = variables.map((variable) => ({
         id: variable.id.startsWith('var-temp-') ? `var-${Math.random().toString(36).substring(2, 9)}` : variable.id,
         name: variable.name,
-        type: variable.type === 'text' ? 'custom' :
-              variable.type === 'number' ? 'custom' :
-              variable.type === 'date' ? 'date' :
-              variable.type === 'category' ? 'classification' :
-              variable.type === 'boolean' ? 'custom' : 'custom',
+        type: typeMap[variable.type] || 'TEXT',
+        instructions: variable.instructions,
         description: variable.instructions,
         prompt: variable.instructions,
         ...(variable.type === 'category' && variable.classificationRules ? {

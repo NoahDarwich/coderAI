@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -20,9 +20,14 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const login = useAuthStore((state) => state.login);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const storeError = useAuthStore((state) => state.error);
+  const storeLoading = useAuthStore((state) => state.isLoading);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const isLoading = storeLoading;
+  const error = localError || storeError;
 
   const {
     register,
@@ -33,16 +38,14 @@ export function LoginForm() {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    setError(null);
+    setLocalError(null);
 
     try {
       await login(data.email, data.password);
-      router.push('/dashboard');
+      const from = searchParams.get('from') || '/dashboard';
+      router.push(from);
     } catch (err) {
-      setError('Invalid email or password');
-    } finally {
-      setIsLoading(false);
+      setLocalError(err instanceof Error ? err.message : 'Invalid email or password');
     }
   };
 
@@ -94,10 +97,6 @@ export function LoginForm() {
           'Sign In'
         )}
       </Button>
-
-      <p className="text-xs text-slate-600 dark:text-slate-400 text-center">
-        Phase 1: Mock authentication - any email/password works
-      </p>
     </form>
   );
 }

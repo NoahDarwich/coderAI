@@ -1,24 +1,21 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// TODO(Phase 2): Replace with JWT token validation
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
   const publicRoutes = ['/', '/auth/login', '/auth/register'];
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith('/auth/'));
 
   if (isPublicRoute) {
     return NextResponse.next();
   }
 
-  // Check if user is authenticated (Phase 1: check localStorage via cookie)
-  const authCookie = request.cookies.get('auth-storage');
+  // Check for auth cookie set by authStore on login
+  const hasAuth = request.cookies.get('has-auth-token');
 
-  // In Phase 1, we'll be lenient - if no auth, redirect to login
-  // Phase 2: Validate JWT token here
-  if (!authCookie) {
+  if (!hasAuth) {
     const loginUrl = new URL('/auth/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);

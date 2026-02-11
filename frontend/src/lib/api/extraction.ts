@@ -6,6 +6,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExtractionResult } from '@/lib/types/api';
 import { mockExtractionResults } from '@/mocks/results';
+import { apiClient } from './client';
+import { BackendProjectResults, transformDocumentResult } from './transforms';
 
 /**
  * Query Keys
@@ -18,21 +20,69 @@ export const extractionKeys = {
   detail: (id: string) => [...extractionKeys.details(), id] as const,
 };
 
+// Mock API functions
+const mockExtractionApi = {
+  getResults: async (_projectId: string): Promise<ExtractionResult[]> => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return mockExtractionResults.filter(
+      (result) => result.schemaId === 'schema-001'
+    );
+  },
+
+  flagResult: async (resultId: string, flagged: boolean): Promise<{ resultId: string; flagged: boolean }> => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const result = mockExtractionResults.find((r) => r.id === resultId);
+    if (result) {
+      result.flagged = flagged;
+    }
+    return { resultId, flagged };
+  },
+
+  bulkFlag: async (resultIds: string[], flagged: boolean): Promise<{ resultIds: string[]; flagged: boolean }> => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    resultIds.forEach((id) => {
+      const result = mockExtractionResults.find((r) => r.id === id);
+      if (result) {
+        result.flagged = flagged;
+      }
+    });
+    return { resultIds, flagged };
+  },
+};
+
+// Real API functions
+const realExtractionApi = {
+  getResults: async (projectId: string): Promise<ExtractionResult[]> => {
+    const response = await apiClient.get<BackendProjectResults>(
+      `/api/v1/projects/${projectId}/results`
+    );
+    return response.documents.map(transformDocumentResult);
+  },
+
+  flagResult: async (extractionId: string, flagged: boolean): Promise<{ resultId: string; flagged: boolean }> => {
+    await apiClient.put(`/api/v1/extractions/${extractionId}/flag`, { flagged });
+    return { resultId: extractionId, flagged };
+  },
+
+  bulkFlag: async (resultIds: string[], flagged: boolean): Promise<{ resultIds: string[]; flagged: boolean }> => {
+    // Flag each individually (backend may not have bulk endpoint)
+    await Promise.all(
+      resultIds.map(id => apiClient.put(`/api/v1/extractions/${id}/flag`, { flagged }))
+    );
+    return { resultIds, flagged };
+  },
+};
+
+// Select API based on environment
+const extractionApi = apiClient.useMockData ? mockExtractionApi : realExtractionApi;
+
 /**
  * Fetch extraction results for a project
  */
 export function useExtractionResults(projectId: string) {
   return useQuery({
     queryKey: extractionKeys.list(projectId),
-    queryFn: async () => {
-      // TODO(Phase 2): Replace with real API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Filter results by project (via schema)
-      return mockExtractionResults.filter(
-        (result) => result.schemaId === 'schema-001'
-      );
-    },
+    queryFn: () => extractionApi.getResults(projectId),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -44,26 +94,14 @@ export function useFlagResult(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       resultId,
       flagged,
     }: {
       resultId: string;
       flagged: boolean;
-    }) => {
-      // TODO(Phase 2): Replace with real API call
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // Update mock data
-      const result = mockExtractionResults.find((r) => r.id === resultId);
-      if (result) {
-        result.flagged = flagged;
-      }
-
-      return { resultId, flagged };
-    },
+    }) => extractionApi.flagResult(resultId, flagged),
     onSuccess: () => {
-      // Invalidate and refetch
       queryClient.invalidateQueries({ queryKey: extractionKeys.list(projectId) });
     },
   });
@@ -76,26 +114,13 @@ export function useBulkFlagResults(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       resultIds,
       flagged,
     }: {
       resultIds: string[];
       flagged: boolean;
-    }) => {
-      // TODO(Phase 2): Replace with real API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Update mock data
-      resultIds.forEach((id) => {
-        const result = mockExtractionResults.find((r) => r.id === id);
-        if (result) {
-          result.flagged = flagged;
-        }
-      });
-
-      return { resultIds, flagged };
-    },
+    }) => extractionApi.bulkFlag(resultIds, flagged),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: extractionKeys.list(projectId) });
     },
