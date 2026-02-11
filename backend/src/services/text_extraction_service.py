@@ -1,38 +1,39 @@
 """
 Text Extraction Service using OpenAI API.
 
-This service mimics the pattern from reference_backend/response_openai.py
-for extracting structured data from text using LLM prompts.
+This service extracts structured data from text using LLM prompts.
+Uses AsyncOpenAI to avoid blocking the event loop.
 """
-import json
-import os
-import re
+import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from src.core.config import settings
 from src.models.variable import Variable, VariableType
+from src.services.response_parser import parse_extraction_response
+
+logger = logging.getLogger(__name__)
 
 
 class TextExtractionService:
     """
     Service for extracting structured data from text using OpenAI API.
-
-    Similar to ExtractInfoResponses from reference backend.
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize the extraction service with OpenAI client."""
-        self.client = OpenAI(api_key=api_key or settings.OPENAI_API_KEY)
-        self.default_model = "gpt-4o"  # Use GPT-4o for better extraction
+        """Initialize the extraction service with async OpenAI client."""
+        self.client = AsyncOpenAI(api_key=api_key or settings.OPENAI_API_KEY)
+        self.default_model = "gpt-4o"
         self.default_temperature = 0.1
         self.default_top_p = 0.2
 
-    def extract_variable(
+    async def extract_variable(
         self,
         text: str,
         variable: Variable,
+        prompt_text: Optional[str] = None,
         max_retries: int = 3,
     ) -> Dict[str, Any]:
         """
@@ -41,19 +42,21 @@ class TextExtractionService:
         Args:
             text: The text content to extract from
             variable: Variable definition with instructions
+            prompt_text: Optional stored prompt to use instead of auto-building
             max_retries: Maximum number of retry attempts
 
         Returns:
             Dict with keys: value, confidence (0-100), source_text, raw_response
         """
-        # Build prompt based on variable type
-        system_prompt = self._build_system_prompt(variable)
+        if prompt_text:
+            system_prompt = prompt_text
+        else:
+            system_prompt = self._build_system_prompt(variable)
         user_prompt = self._build_user_prompt(text, variable)
 
-        # Call OpenAI API with retries
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.default_model,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -64,20 +67,23 @@ class TextExtractionService:
                     response_format={"type": "json_object"},
                 )
 
-                # Parse response
                 response_text = response.choices[0].message.content
                 if not response_text:
                     continue
 
-                result = self._parse_response(response_text, variable)
+                result = parse_extraction_response(response_text)
                 return result
 
             except Exception as e:
                 if attempt < max_retries - 1:
-                    print(f"API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
-                    continue
+                    delay = 2 ** attempt
+                    logger.warning(
+                        f"API call failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                        f"Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
                 else:
-                    print(f"API call failed after {max_retries} attempts: {e}")
+                    logger.error(f"API call failed after {max_retries} attempts: {e}")
                     return {
                         "value": None,
                         "confidence": 0,
@@ -92,10 +98,11 @@ class TextExtractionService:
             "error": "Max retries exceeded",
         }
 
-    def extract_all_variables(
+    async def extract_all_variables(
         self,
         text: str,
         variables: List[Variable],
+        prompts: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Extract all variables from text.
@@ -103,6 +110,7 @@ class TextExtractionService:
         Args:
             text: The text content to extract from
             variables: List of variable definitions
+            prompts: Optional dict mapping variable_id -> prompt_text
 
         Returns:
             List of extraction results, one per variable
@@ -110,7 +118,13 @@ class TextExtractionService:
         results = []
 
         for variable in variables:
-            extraction = self.extract_variable(text, variable)
+            prompt_text = None
+            if prompts:
+                prompt_text = prompts.get(str(variable.id))
+
+            extraction = await self.extract_variable(
+                text, variable, prompt_text=prompt_text
+            )
             extraction["variable_id"] = str(variable.id)
             extraction["variable_name"] = variable.name
             results.append(extraction)
@@ -223,44 +237,7 @@ Instructions: {variable.instructions}
 Remember to respond with valid JSON only.
 """
 
-    def _parse_response(self, response_text: str, variable: Variable) -> Dict[str, Any]:
-        """Parse and clean the API response."""
-        # Clean response (remove markdown code blocks if present)
-        cleaned_response = re.sub(r'```json\s*', '', response_text)
-        cleaned_response = re.sub(r'```\s*$', '', cleaned_response)
-        cleaned_response = cleaned_response.strip()
 
-        try:
-            parsed = json.loads(cleaned_response)
-
-            # Ensure required fields exist
-            result = {
-                "value": parsed.get("value"),
-                "confidence": int(parsed.get("confidence", 50)),  # 0-100 scale
-                "source_text": parsed.get("source_text"),
-                "explanation": parsed.get("explanation", ""),
-                "raw_response": response_text,
-            }
-
-            # Validate confidence is in range
-            result["confidence"] = max(0, min(100, result["confidence"]))
-
-            return result
-
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse JSON response: {e}")
-            print(f"Response was: {response_text[:200]}...")
-
-            return {
-                "value": None,
-                "confidence": 0,
-                "source_text": None,
-                "error": f"JSON parse error: {str(e)}",
-                "raw_response": response_text,
-            }
-
-
-# Factory function
 def create_extraction_service(api_key: Optional[str] = None) -> TextExtractionService:
     """Create and return a TextExtractionService instance."""
     return TextExtractionService(api_key=api_key)

@@ -1,25 +1,30 @@
 {   "event_extractor": {
-      "model": "gpt-4.1",
-      "system_prompt": """
-           Extract and summarize any protest events mentioned in the provided Arabic news article about Jordan.
-           An event is defined as a time-limited, public gathering or interaction involving multiple participants, usually making demands directed at a target (which may be an institution, official, international actor, etc).
-           Single-person actions must be public and articulate a demand centered around another individual to qualify as a protest event. Events can also occur online, and cases where a presumed target responds count as events even if no demand is explicitly stated.
+        "model": "gpt-4.1",
+        "system_prompt": """
+            Extract and present any protest events mentioned in the provided Arabic news article about Jordan. Do not condense or omit details - capture all information from the article about each event.
+            A protest event is defined as a time-limited, public gathering or interaction involving multiple participants, usually making demands directed at a target (which may be an institution, official, international actor, etc).
+            Single-person actions must be public and articulate a demand centered around another individual to qualify as a protest event. Events can also occur online, and cases where a presumed target responds count as events even if no demand is explicitly stated.
+            If an event is part of a larger event (such as a protest occurring within a broader national strike, or multiple related actions with the same demands by overlapping or identical participants), each event should be reported separately if one of them spans a different time period or geographic location than the other(s), even if the demands or participants are similar.
             Recognized protest tactics often include: protest, sit-in, road blockage, strike, work stoppage, march, boycotts, petition, social media or advocacy campaign, self-harm, a public gathering or activity with a demand.
             Make sure to not report the same event multiple times if it is mentioned in different ways or sections of the article, or if multiple tactics are used in the same event, or it spans multiple days, or move to different locations.
             If events have different dates or time or locations, or are clearly distinct in demands, they should be reported separately.
+
             **Instructions:**
             - Read and internally reason through the article to identify any protest event(s) that match the definitions and criteria above.
             - For each identified event, internally evaluate all relevant details and ensure it meets the requirements for protest events.
             - Make sure to distinguish between separate events based on date, location, demands, and other key factors.
+            - If the article reports a protest or set of coordinated actions occurring in multiple locations (e.g., several cities listed for the same protest, or multiple areas mentioned together), you MUST create a separate event narrative for each location - even if they are described in a single sentence with identical details, unless the two protests joind together in one place. Each narrative should include all shared details (demands, participants, context, etc.) but ONLY mention its own specific location, not the other locations. Never combine multiple locations into one event narrative.
             - Make sure you are not creating duplicate events if the same event is described in multiple ways.
-            - Summarize each qualifying event in a clear, self-contained narrative, including all relevant information and notable details.
+            - For each qualifying event, write a comprehensive narrative that captures ALL information mentioned in the article about that event. Each narrative should describe ONE event ONLY. Use the same wording as the article as much as possible. Do not abbreviate or leave out details.
+            - Each event narrative MUST include all details from the article about that event.
+            - Do not consider pure aggregate or statistical statements, or summary mentions of protests that lack specific details about timing, or concrete locations, as events. Statements about general trends, historical overviews that reports wave of events, should NOT be extracted as events. If a statement lacks date, location, or does not describe an identifiable single event, it should NOT be extracted. However, if such a statement accompanies a specific event being reported, extract relevant details if available (demands, participants, organizers, etc.) and include them in that event's narrative.
 
             **Output Rules (IMPORTANT):**
             - Respond ONLY with a single valid JSON object and no other text.
             - The JSON object must contain exactly one key: "events".
             - If no protest events are identified, output exactly:
             {"events": []}
-            - The value of "events" must be a JSON array whose elements are string summaries. Each string should be a fully self-contained narrative summary of a single protest event (these JSON arrays are directly usable as Python lists of strings).
+            - The value of "events" must be a JSON array whose elements are string narratives. Each string should be a comprehensive narrative of a single protest event containing all details from the article about that event (these JSON arrays are directly usable as Python lists of strings).
             - Do not repeat reasoning or extract portions; only the final narratives should be output.
 
             # Example 1:
@@ -28,7 +33,7 @@
             " أكد الناطق باسم نقابة المعلمين، الدكتور أحمد الحجايا، أن اضراب المعلمين قائم يوم الثلاثاء ولا نية للتراجع عنه بالرغم من تصريحات رئيس ديوان الخدمة المدنية خلف هميسات باستثناء المعلمين من تعديلات نظام الخدمة المدنية واعتماد المنحنى الطبيعي.واضاف الحجايا ل الاردن24 إن تنصل رئيس الوزراء الدكتور عمر الرزاز من الاتفاقات التي تمت معه وتراجعه عن موقفه السابق من خلال التلمحيات التي أطلقها مؤخرا وكذلك تناقض التصريحات من قبل ديوان الخدمة المدنية وعدم نفيها من قبل الحكومة أيضا أوصلت النقابة إلى معركة كسر عظم مع ديوان الخدمة المدنية وأوصلها إلى طريق مسدود واعلان الاضراب. اقرأ ايضا : نقابة المعلمين تعلق اضرابها.. ومجلس الوزراء يستثني المعلمين من المنحنى الطبيعيوقال ان جميع المسؤولين الذين التقتهم النقابة كانوا يؤيدون استثناء المعلمين من تطبيق المنحنى الطبيعي والخروج بنظام خاص بهم يعيد للمهنة هيبتها نظرا لوجود خصوصية لمهنة التعليم وذلك لم يحصل حتى اللحظة.واشار الى ان النقابة حاولت التواصل مع وزارة التربية والتعليم إلا أنها لم تجد مسؤولا نظرا لغياب الوزير المكلف في مهام خارج البلاد وكذلك مع الحكومة الا انها لم تجد تجاوبا، وعليه، قررت اعلان الاضراب."
 
             **Expected Output:**
-            {"events":  ["نقابة المعلمين الأردنيين أعلنت عن إضراب للمعلمين يوم الثلاثاء، احتجاجاً على تنصل رئيس الوزراء عمر الرزاز من الاتفاقات السابقة مع النقابة، وعلى تصريحات وتناقضات ديوان الخدمة المدنية بشأن استثناء المعلمين من تعديلات نظام الخدمة المدنية واعتماد المنحنى الطبيعي. النقابة اعتبرت أن غياب الاستجابة الحكومية وإخلال الوعود أوصلها إلى 'معركة كسر عظم' مع ديوان الخدمة المدنية، ما دفعها إلى إعلان الإضراب."]}
+            {"events":  ["أعلنت نقابة المعلمين الأردنيين عن إضراب للمعلمين يوم الثلاثاء ولا نية للتراجع عنه، وذلك احتجاجاً على تنصل رئيس الوزراء الدكتور عمر الرزاز من الاتفاقات السابقة مع النقابة وتراجعه عن موقفه، وعلى تناقض تصريحات ديوان الخدمة المدنية بشأن استثناء المعلمين من تعديلات نظام الخدمة المدنية واعتماد المنحنى الطبيعي. وأكد الناطق باسم النقابة الدكتور أحمد الحجايا أن النقابة وصلت إلى 'معركة كسر عظم' مع ديوان الخدمة المدنية وطريق مسدود، مشيراً إلى أن جميع المسؤولين الذين التقتهم النقابة أيدوا استثناء المعلمين والخروج بنظام خاص بهم لكن ذلك لم يحصل. وأضاف أن النقابة حاولت التواصل مع وزارة التربية والتعليم والحكومة لكنها لم تجد تجاوباً نظراً لغياب الوزير المكلف في مهام خارج البلاد."]}
 
 
             # Example 2:
@@ -47,16 +52,89 @@
             **Expected Output:**
             {"events": [ "نفذ معلمو محافظة الكرك وقفة احتجاجية أمام مديرية التربية والتعليم للمطالبة بصرف علاوة المهنة التي تم الاتفاق عليها سابقًا مع الحكومة.","نظم معلمو محافظة الطفيلة اعتصامًا أمام مبنى المحافظة تضامنًا مع زملائهم في الكرك، مؤكدين استمرارهم بالإضراب حتى تحقيق المطالب."]}
 
+            # Example 4:
+
+            **Input:**
+            "نفذ عمال المياومة في الأردن 15 اعتصاماً خلال العام المنصرم احتجاجاً على تأخر صرف رواتبهم. وفي آخر هذه الاحتجاجات، تجمع
+            العشرات منهم أمام مبنى وزارة العمل يوم الأحد مطالبين بصرف مستحقاتهم المتأخرة."
+
+            **Expected Output:**
+            {"events": ["تجمع العشرات من عمال المياومة أمام مبنى وزارة العمل يوم الأحد مطالبين بصرف مستحقاتهم المتأخرة احتجاجاً على
+            تأخر صرف رواتبهم."]}
+
             # Notes
 
             - Protest can be in-person or online.
             - Event definitions and criteria must be strictly applied.
+            - Make sure to distinguish separate events based on date, location, demands, and other key factors.
             - Output must be only the list of narratives; do not output any reasoning or internal decision-making steps.
+            - Each narrative must be complete and capture all information about the event without omitting details, while using wording from the article as much as possible.
 
             ---
 
             **REMINDER:**
-            Only output the final list of protest event narratives, self-contained summaries per the rules above. All reasoning must be internal and should NEVER appear in your output.
+            Only output the final list of protest event narratives per the rules above. Each narrative must capture all information about the event from the article without omitting details. All reasoning must be internal and should NEVER appear in your output.
+
+        """,
+
+        "response_format": "json_object",
+        "temperature": 0.10,
+        "top_p": 0.20
+    },
+
+    "duplicates_summarizer": {
+        "model": "gpt-4.1",
+        "system_prompt": """
+                        Summarize a list of Arabic event narratives by combining all relevant information into a comprehensive summary in Arabic, ensuring no unique detail is lost and preserving the original wording from the articles as much as possible. This summary will replace the duplicate event entries in your dataset. Follow these specific rules:
+
+                        - **Date Conflicts:** If there are conflicting start or end dates, use the earliest start date and the latest end date across all accounts.
+                        - **Event Type Priority:** Prioritize and clearly indicate information from confirmed or actual events over planned or threatened ones.
+                        - **Locations & Tactics:** Collect all mentioned locations, tactics، or forms of protest. Retain all, with emphasis or description focusing on the most frequent or prominent ones.
+                        - **Participant Numbers, Repression, Violence:** When quantities (like the number of participants, repression incidents, or levels of violence) differ, always use the highest reported value and the most severe level described.
+                        - **Demands:** For all information about demands or protest objectives, identify the most dominant demand (based on frequency or prominence in the texts), state it first, then list all other demands. All language related to demands should match the original wording of the articles as closely as possible.
+                        - **Wording Fidelity:** Use the same phrasing and wording as the input articles whenever reporting facts, details, or demands. Do not paraphrase unless necessary for grammatical correctness or to remove duplication; do not abridge or summarize in your own words.
+                        - **Comprehensive Detail:** Include every unique relevant detail appearing in any input narrative, regardless of where it comes from.
+                        - **Language:** Write only in Arabic. Do not lose or abridge specific details for brevity.
+
+                        Persist until all requirements above are met before producing your answer. Think step-by-step to verify each instruction has been followed.
+
+                        # Steps
+
+                        1. Read all input narratives carefully.
+                        2. Identify and extract: all relevant dates, event types (planned/actual), locations, forms of protest/tactics, numbers of participants, all incidents of repression/violence, all demands/protest objectives (noting the most dominant), and any other unique details.
+                        3. Resolve any conflicts strictly per the stated rules (earliest date, actual > planned, highest counts, most severe repression, etc.).
+                        4. For demands: determine the most prominent or frequent demand and state it first, followed by all other demands, using the original wording from the articles.
+                        5. When summarizing, preserve the exact phrasing of the articles' texts for facts, details, and demands.
+                        6. Consolidate all unique information into a single, thorough paragraph in Arabic.
+                        7. Review your summary to ensure every rule and unique input detail has been incorporated and nothing has been omitted, paraphrased, or abbreviated, especially the wording of demands and article language.
+
+                        # Output Format
+
+                        - Output a JSON object with key "combined_summary", with a single comprehensive paragraph in Arabic that reflects all points as outlined above.
+                        - Ensure the paragraph mirrors the language, detail, and terminology of the supplied inputs as closely as possible, especially for demands and key factual details.
+                        - Do not include any text outside the JSON object
+
+                        **Example**
+
+                        **Input:**
+                        [
+                        "شهدت مدينة عمّان مظاهرة شارك فيها مئات المحتجين أمام الدوار الرابع احتجاجًا على ارتفاع الأسعار وسياسات الحكومة الاقتصادية. رفع المتظاهرون شعارات تطالب بتحسين الأوضاع المعيشية، وتدخلت قوات الأمن لتفريق التجمع باستخدام الغاز المسيل للدموع، ما أدى إلى إصابة عدد من المشاركين واعتقال بعضهم."
+                        ,
+                        "أفادت مصادر محلية بأن احتجاجًا اندلع في العاصمة الأردنية عمّان بالقرب من الدوار الرابع، حيث تجمع العشرات اعتراضًا على الغلاء وفرض الضرائب. وذكرت التقارير أن قوات الدرك طوقت المكان واعتقلت عدة متظاهرين بعد حدوث اشتباكات محدودة، بينما استمر الاحتجاج لساعات قبل أن ينتهي مساءً."
+                        ]
+
+                        **Output:**
+                        {"combined_summary": "
+                        شهدت مدينة عمّان مظاهرة كبيرة أمام الدوار الرابع "احتجاجًا على ارتفاع الأسعار"، إضافة إلى "رفض سياسات الحكومة الاقتصادية" و"الاعتراض على الغلاء وفرض الضرائب" و"تحسين الأوضاع المعيشية". شارك في الاحتجاج مئات الأشخاص وفق أعلى التقديرات، ورفع المتظاهرون شعارات تطالب بتحسين الأوضاع المعيشية. استمرت المظاهرة لساعات حتى انتهت مساءً. تدخلت قوات الأمن والدرك لتطويق الموقع وتفريق التجمع باستخدام الغاز المسيل للدموع، مما أسفر عن إصابة عدد من المشاركين واعتقال العديد منهم بعد حدوث اشتباكات محدودة.
+                        "}
+
+                        ---
+
+                        **Reminder:**
+                        - Always use the earliest start date, latest end date, highest counts, most severe repression, all unique details, and prioritize confirmed/actual events over planned/threatened ones.
+                        - Resolve any conflicting details following the provided rules.
+                        - For demands, list the most dominant demand first, then all others, using the exact wording from the articles.
+                        - Output must be a single, comprehensive paragraph in Arabic, containing every relevant element from the input, mirroring original article texts as closely as possible.
 
         """,
 
@@ -68,22 +146,22 @@
     "duplicate_checker":{
         "model": "gpt-4.1",
         "system_prompt": """
-            Determine if a described protest event is already listed among protest events in a provided CSV file for the same date. Respond with a JSON object indicating duplication and listing duplicate event IDs found, following careful reasoning as outlined below.
+            Determine if a described protest event is already listed among protest events in a provided dataframe for the same date. Respond with a JSON object indicating duplication and listing duplicate event IDs found, following careful reasoning as outlined below.
 
             You are given:
             - A narrative describing a protest event
             - The event's date and location
-            - A CSV file (via file search) listing other events on the same date
+            - A string dataframe listing other events on the same date
 
             Your objective:
             - Analyze the narrative, date, and location both start and end location.
-            - Compare all relevant details (narrative wording, location, date, demands, participants, organizers, etc.) to the events in the CSV.
+            - Compare all relevant details (narrative wording, location, date, demands, participants, organizers, etc.) to the events in the dataframe.
             - Decide if the current event is already listed ("duplicate") or not.
-            - If the location is missing or not specified in the narrative, compare events using the date and demands as your main matching criteria.
+            - If the location is missing or not specified in the narrative, be conservative: only consider it a duplicate if there is strong evidence beyond just matching date and general demands (e.g., identical participants, identical organizers, very specific matching details, or nearly identical narrative wording).
 
             Key instructions:
             - Always reason thoroughly and internally before making any final determination.
-            - Do not make assumptions beyond information in the narrative and CSV.
+            - Do not make assumptions beyond information in the narrative and dataframe.
             - Only output the required JSON:
             {
                 "is_duplicate": true/false,
@@ -96,8 +174,8 @@
             # Steps
 
             1. Examine all key details from the input (narrative, date, location, demands, etc.).
-            2. If the location is not provided, compare based on date and the main demands.
-            3. For each event in the CSV:
+            2. If the location is not provided, be conservative and only mark as duplicate if there is strong evidence (e.g., identical participants, organizers, very specific matching details, or nearly identical narrative wording) - matching date and general demands alone is NOT sufficient.
+            3. For each event in the dataframe:
                 - Compare all available listings, focusing on date and location (if available), demands/causes and narrative details.
                 - Consider wording differences.
                 - Only accept as a duplicate if references are clearly to the same event.
@@ -116,13 +194,14 @@
             Input Narrative: "تجمع العشرات أمام مجلس النواب احتجاجًا على رفع أسعار الوقود."
             Input Date: 2019-09-05
             Input Location: مجلس النواب
-            CSV Events:
+            Dataframe:
             | id | date       | location | description                                         |
             |----|------------|----------|-----------------------------------------------------|
             | 77 |2019-09-05  |مجلس النواب  |احتجاج أمام مجلس النواب ضد رفع أسعار المحروقات  |
+            | 13 |2019-09-05  |شركة الكهرباء | اعتصام لموظفي شركة الكهرباء للمطالبة بالعلاوات وزيادة الرواتب  |
             | 78 |2019-09-05  |اربد | اعتصام لموظفي البلدية للمطالبة بزيادة الرواتب     |
 
-            Reasoning: The date and location match (2019-09-05, Parliament). The CSV record 77 explicitly describes a protest at the Parliament against fuel price increases, which matches the narrative’s demands and venue. Record 78 differs in both topic and location. Strong evidence of duplication → match with ID 77.
+            Reasoning: The date and location match (2019-09-05, Parliament). The Dataframe record 77 explicitly describes a protest at the Parliament against fuel price increases, which matches the narrative’s demands and venue. Record 78 differs in both topic and location. Strong evidence of duplication → match with ID 77.
 
             Final Output:
             {
@@ -134,13 +213,13 @@
             Input Narrative: "طلاب جامعة اليرموك نظموا وقفة احتجاجية للمطالبة بتحسين خدمات السكن الجامعي."
             Input Date: 2022-07-20
             Input Location: جامعة اليرموك
-            CSV Events:
+            Dataframe:
             | id | date       | location | description                              |
             |----|------------|----------|------------------------------------------|
             | 88 |2022-07-20  |شركة الكهرباء | اعتصام لموظفي شركة الكهرباء للمطالبة بالعلاوات |
             | 89 |2022-07-20  |إربد | مسيرة طلابية للمطالبة بإلغاء الامتحانات النهائية الحضورية |
 
-            Reasoning: Although the date is the same (2022-07-20), the narrative describes a student protest at Yarmouk University about dorm services, while CSV records concern different actors and demands (utility company employees seeking allowances; a student march about exams). No strong overlap in location or demands → not a duplicate.
+            Reasoning: Although the date is the same (2022-07-20), the narrative describes a student protest at Yarmouk University about dorm services, while Dataframe records concern different actors and demands (utility company employees seeking allowances; a student march about exams). No strong overlap in location or demands → not a duplicate.
 
             Final Output:
             {
@@ -148,32 +227,32 @@
             "duplicate_events_ids": []
             }
 
-            Example 3 (duplicate—no location in input narrative)
+            Example 3 (NOT duplicate—no location in input narrative, insufficient evidence)
             Input Narrative: "خرج محتجون يطالبون بإلغاء ضريبة المبيعات على المواد الغذائية الأساسية."
             Input Date: 2018-06-10
             Input Location: None
-            CSV Events:
+            Dataframe:
             | id | date       | location    | description                                   |
             |----|------------|-------------|-----------------------------------------------|
             | 91 |2018-06-10  |الزرقاء |مواطنون يحتجون على ضريبة المبيعات المفروضة على السلع الغذائية      |
             | 92 |2018-06-10  |الكرك | وقفة تضامنية مع الأسرى الفلسطينيين  |
 
-            Reasoning: Location is not provided, so comparison relies on date and demands. The narrative demands removal of sales tax on basic food items; CSV record 91 on the same date describes citizens protesting the sales tax on food—this aligns on date and main demand despite missing location. Record 92 is on a different topic. Strong evidence of duplication → match with ID 91.
+            Reasoning: Location is not provided in the input narrative. While record 91 has a similar demand (sales tax on food) and the same date, there is no strong evidence these are the same event - no matching participants, organizers, or specific details. Multiple protests on the same topic could occur on the same day in different locations. Without location or other strong identifying details, we cannot confirm duplication.
 
             Final Output:
             {
-            "is_duplicate": true,
-            "duplicate_events_ids": ["91"]
+            "is_duplicate": false,
+            "duplicate_events_ids": []
             }
 
             # Notes
 
             - If multiple matching events are found, include all relevant IDs.
-            - For records missing critical details, rely on date and narrative demands as primary comparison criteria.
+            - For records missing location, be conservative: only mark as duplicate if there is strong evidence beyond date and general demands (e.g., identical participants, organizers, or very specific matching details).
             - If in doubt, only label as a duplicate with strong evidence.
             - Output strictly the JSON format, with boolean and list as specified.
 
-            **REMINDER:** Your task is to determine event duplication using date, and (if available) location, and narrative, returning only the required JSON object, after reasoning internally  step-by-step before conclusion. If location is missing, compare based on date and demands.
+            **REMINDER:** Your task is to determine event duplication using date, location, and narrative, returning only the required JSON object after reasoning internally step-by-step. If location is missing, be conservative and only mark as duplicate if there is strong evidence beyond matching date and general demands (e.g., identical participants, organizers, or nearly identical narrative wording).
         """,
 
         "response_format": "json_object",
@@ -182,8 +261,8 @@
     },
 
     "tactic_extractor": {
-      "model": "gpt-4o",
-      "system_prompt": """
+        "model": "gpt-4o",
+        "system_prompt": """
         Classify the described protest event in a provided Arabic article passage, using explicit definitions for protest tactics. Your goal is to carefully analyze the passage, extract the most accurate tactic based strictly on the provided information, and provide an output containing both the original Arabic text that supports your classification and the selected class/classes.
         Definitions for each class:
         - Protest: Public gathering of individuals in a public space articulating a demand.
@@ -208,15 +287,15 @@
         - Do not provide any analysis, commentary, or extraneous text; only give the supporting Arabic phrase(s) and your chosen class/classes as specified.
         - Output your answer in JSON format as follows:
         {
-            "original_text": "[exact Arabic text used to identify the tactic]",
-            "classification": "[one or more of: Protest, Sit-in, Road blockage, Strike, Work stoppage, March, Boycott, Election Boycott, Petition, Social media campaign, Self-harm, Public gatherings or activity, Religious gatherings, Other tactic]"
+            "tactic_original_text": "[exact Arabic text used to identify the tactic]",
+            "tactic_classification": "[one or more of: Protest, Sit-in, Road blockage, Strike, Work stoppage, March, Boycott, Election Boycott, Petition, Social media campaign, Self-harm, Public gatherings or activity, Religious gatherings, Other tactic]"
         }
 
         # Output Format
 
         - Always output a single JSON object with the fields:
-        - original_text: String with the Arabic phrase(s) supporting the classification
-        - classification: class/classes name from the provided definitions
+        - tactic_original_text: String with the Arabic phrase(s) supporting the classification
+        - tactic_classification: class/classes name from the provided definitions
         - Do not include explanations, translations, or any extra commentary.
         - The output must NOT be in a code block.
 
@@ -226,31 +305,31 @@
         Input passage: "نفذ عشرات العمال اعتصامًا أمام مبنى البلدية للمطالبة بتحسين شروط العمل."
         Output:
         {
-        "original_text": ["اعتصامًا"],
-        "classification": ["Sit-in"]
+        "tactic_original_text": ["اعتصامًا"],
+        "tactic_classification": ["Sit-in"]
         }
 
         Example 2:
         Input passage: "أعلنت نقابة المعلمين عن إضراب عام في جميع المدارس الحكومية يوم الأحد."
         Output:
         {
-        "original_text": ["إضراب عام"],
-        "classification": ["Strike"]
+        "tactic_original_text": ["إضراب عام"],
+        "tactic_classification": ["Strike"]
         }
 
         Example 3:
         Input passage: " انطلقت مسيرة من ميدان التحرير إلى مجلس الوزراء للمطالبة بحقوق العمال ثم أقاموا وقفة احتجاجية."
         Output:
         {
-        "original_text": ["وقفة احتجاجية , مسيرة"],
-        "classification": ["March, Protest"]
+        "tactic_original_text": ["وقفة احتجاجية , مسيرة"],
+        "tactic_classification": ["March, Protest"]
         }
 
         # Notes
 
         - Always use only the new class list and definitions.
-        - Your answer must include both the supporting phrase(s) (original_text) and tactic classifications (classification) as a JSON object.
-        - If no relevant tactic is present in the passage, leave classification empty.
+        - Your answer must include both the supporting phrase(s) (tactic_original_text) and tactic classifications (tactic_classification) as a JSON object.
+        - If no relevant tactic is present in the passage, leave tactic_classification empty.
         - Do not output any other text.
 
         Task reminder: Analyze the passage, reason to select the most fitting class/classes, and provide both the supporting Arabic phrase(s) or word(s) and your classification in the specified JSON structure.
@@ -375,9 +454,10 @@
         "top_p": 0.20
     },
 
-   "event_classifier": {
+    "event_classifier": {
         "model": "gpt-4o",
-        "system_prompt": """Classify whether a given Arabic news article passage describes a protest event, based strictly on authoritative event definitions, regardless of whether the protest event is the main focus or mentioned only in passage as side information. Use provided defenitions of “protest event”. Carefully analyze and internally reason, step-by-step, about whether the passage fulfills the relevant event-defining criteria before making your classification. Your reasoning must be done internally; only the final classification should be output.
+        "system_prompt": """
+                    Classify whether a given Arabic news article passage describes a protest event, based strictly on authoritative event definitions, regardless of whether the protest event is the main focus or mentioned only in passage as side information. Use provided defenitions of “protest event”. Carefully analyze and internally reason, step-by-step, about whether the passage fulfills the relevant event-defining criteria before making your classification. Your reasoning must be done internally; only the final classification should be output.
                     Definition of a Protest Event:
                     An event is defined as a time-limited, public gathering or interaction involving multiple participants, usually making demands directed at a target (which may be an institution, official, international actor, etc).The event must be taking place only in Jordan.
                     Single-person actions must be public and articulate a demand centered around another individual to qualify as a protest event. Events can also occur online, and cases where a presumed target responds count as events even if no demand is explicitly stated.
@@ -415,13 +495,13 @@
                     ("دعا موظفون في وزارة الصحة زملاءهم لتنفيذ وقفة احتجاجية أمام وزارة الصحة نهاية شهر نيسان الحالي، وذلك احتجاجا على عدم الاستجابة لمطالبهم السابقة والمتعلقة بامتيازات وظيفية ومعيشية عديدة.  وتمثّلت مطالب الموظفين بـ"زيادة رواتب، مكافأة نهاية خدمة عادلة، الحصول على بدل عمل اضافي دون شروط، مقاعد جامعية لأبناء العاملين في الصحة، تأمين صحي درجة اولى، عطلة يوم السبت، رفع الحوافز، الحماية من اعتداءات بعض المراجعين، علاوة خطورة العمل، سكن وظيفي أو بدل سكن".")
 
                     **Expected Output:**
-                    { "protest_event": True }
+                    { "protest_event": true }
 
                     **Example Input:**
                     ("أوقفت جامعة اليرموك موظفا عن العمل وأحالته إلى مجلس تأديبي ولجنة تحقيق، إثر الاشتباه بتقاضيه رشاوى مالية من طلبة عرب مقابل قيامه بالتلاعب في سجلات الجامعة الخاصة بامتحان التوفل بحيث يؤهلهم للالتحاق ببرنامج الدراسات العليا. ")
 
                     **Expected Output:**
-                    { "protest_event": False }
+                    { "protest_event": false }
 
                     _Reminder: Strictly apply event definitions. Only output a JSON object with a single Boolean field, with no explanation or extraneous content._
         """,
@@ -440,7 +520,7 @@
                         - "planned_event": An individual or organization announces a protest that will occur in the future, outside of any negotiation or conversation context. A planned event is confirmed, has a specific date and/or location mentioned in the article, and is not dependent on negotiations with the target.
 
                         If information about the protest date is present, include it for the relevant category, the user will provide the date of the article for context, to calculate relative dates if needed.
-                        Always output a JSON object with boolean fields for "threat_event", "planned_event". and If available, as a string in DD-MM-YYYY format for "planned_event_date" .
+                        Always output a JSON object with boolean fields for "threat_event", "planned_event". and If available, as a string in YYYY-MM-DD format for "planned_event_date" .
                         Do not include any additional text or explanation.
 
                         Chain-of-thought: First, analyze the passage to detect key details about context (negotiation/conversation vs. announcement), confirmation, and any dates. Apply the definitions to determine the correct classification. Then, structure the answer as specified.
@@ -497,6 +577,7 @@
                         Important:
                         - Always reason about negotiation/conversation context before classifying.
                         - If the event has already taken place, it should be classified as neither threat nor planned.
+                        - If in the event, a threat is made to continue or escalate protests, but no new protest is announced, classify as neither threat nor planned.
                         - Use the article date to resolve any relative dates, but only if the time frame is clearly mentioned.
                         - Only produce the JSON output as shown, with all keys present and dates in correct fields or null.
 
@@ -597,108 +678,189 @@
     "location_extractor": {
         "model": "gpt-4o",
         "system_prompt": """
-                        Extract all available protest event location details from the provided Arabic passage, including governorate, district, town, neighborhood, and specific site names (if stated or implied), with explicit distinction between start and end locations. Produce the output as a single nested JSON object containing two sub-objects: one for the start location and one for the end location. Each sub-object must contain the same set of fields. If a field is not mentioned in the text, set its value to null.
+                    Extract all available protest event location details from the provided Arabic passage, including governorate, district, town, neighborhood, and specific site names (if stated or implied), making an explicit distinction between start and end locations. Also, determine for each location (start and end) whether it describes or takes place at an official government building. Harmonize information between start and end locations if they refer unambiguously to the same area and one provides more detail. Output your answer as a single nested JSON object, with each of the two location objects containing its own "government_building" boolean field.
 
-                        # Steps
+                    - Your output JSON must have exactly two top-level keys:
+                        1. "start_location": details of the protest's starting point (object; see schema below).
+                        2. "end_location": details of the protest's endpoint; if no endpoint is given, all values should be null (object; same schema as start).
 
-                        1. Read the provided Arabic passage fully.
-                        2. Carefully identify all explicit or implicit details for:
-                        - Where the protest started, and (if different or if the protest moved) where it ended.
-                        - This may include:
-                                - Governorate (المحافظة)
-                                - District (اللواء أو المنطقة)
-                                - Town/City (المدينة أو البلدة)
-                                - Neighborhood (الحي أو المنطقة الأصغر)
-                                - Name_of_location (institution, square, street, etc.)
-                        3. Populate a JSON object with two nested sub-objects:
-                            - "start_location": the extracted details of the protest's starting point
-                            - "end_location": the extracted details of the protest's endpoint (if no movement or endpoint is provided set the values to null)
-                        4. For both sub-objects, include these keys: "Governorate", "District", "Town", "Neighborhood", "Name_of_location".
-                        5. Set any field not present in the text to null.
-                        6. Output only the single nested JSON object.
-                        7. Do not provide any explanation, extra text, or formatting outside the JSON.
+                    - The schema for "start_location" and "end_location": each is a JSON object with these six keys:
+                        - "Governorate"
+                        - "District"
+                        - "Town"
+                        - "Neighborhood"
+                        - "Name_of_location"
+                        - "government_building" (true or false; must never be null or quoted; indicates if *this* location is an official government building, based on explicit or highly reliable inference).
 
-                        # Output Format
+                    - For both "start_location" and "end_location", include all listed keys. Values for the first five location fields may be strings or null, as appropriate. "government_building" is always a boolean.
 
-                        - Output a single nested JSON object with exactly three keys: "start_location", "end_location".
-                            - "start_location" and "end_location" are JSON objects with the following keys: "Governorate", "District", "Town", "Neighborhood", "Name_of_location".
-                            - All string field values must be quoted.
-                            - If any field (in either sub-object) is absent, set its value to null.
+                    - If one of the start or end locations includes more complete information (e.g., the governorate) and it is certain that both refer to the same locality/jurisdiction, fill the missing location fields in the other; only do this if it is unambiguous from the text.
 
-                        Example expected structure:
-                        {
-                        "start_location": {
-                            "Governorate": "...",
-                            "District": ...,
-                            "Town": ...,
-                            "Neighborhood": ...,
-                            "Name_of_location": ...,
-                        },
-                        "end_location": {
-                            "end_Governorate": "...",
-                            "end_District": ...,
-                            "end_Town": ...,
-                            "end_Neighborhood": ...,
-                            "end_Name_of_location": ...,
-                        }
+                    - end location should be filled only if explicitly the text indicates that the protest moved or ended somewhere different than the targeted start location.
 
-                        # Examples
+                    # Steps
 
-                        **Example Input 1:**
-                        نظم الحراك الشبابي الشعبي في محافظة الكرك مسيرة انطلقت بعد صلاة الجمعة من ميدان صلاح الدين الايوبي بوسط المدينة وانتهت في ساحة مدرسة الكرك الثانوية
+                    1. Read the entire provided Arabic passage carefully.
+                    2. Identify all explicit and implicit location details for:
+                        - Where the protest started ("start_location") and, if different or if the protest moved, where it ended ("end_location").
+                        - For each, extract the following, if present or can be inferred with certainty:
+                            - Governorate (المحافظة)
+                            - District (اللواء أو المنطقة)
+                            - Town/City (المدينة أو البلدة)
+                            - Neighborhood (الحي أو المنطقة الأصغر)
+                            - Name_of_location (institution, square, street, etc.)
+                            - government_building (boolean indicating if it's an official government building)
+                        - For each location ("start_location" and "end_location"), determine if the place is or refers to an official government building (e.g., courthouse, government ministry, police station, town hall, municipality, parliament, governorate office, etc.), or there is explicit, unambiguous reference. Set the "government_building" key to true if and only if there is clear evidence or reliable inference that this particular location is an official government facility; otherwise, set to false.
+                    3. For each location, if some fields (such as the governorate) are missing, and it is certain from context that both refer to the same place, copy the more complete detail to the missing side.
+                        - Only harmonize location fields between start and end if there is no possible ambiguity.
+                        - Leave fields null if you cannot be fully confident.
+                    4. Populate and output a single JSON object with this structure:
+                        - Top-level keys: "start_location", "end_location"
+                        - Each is a JSON object with the six keys, as above (five location fields and "government_building" boolean).
+                        - All location field values must be quoted strings or null as appropriate.
+                        - "government_building" must be a boolean (true or false, never null or quoted).
+                    5. Do not provide any explanation, extra text, or code formatting outside the JSON object.
 
-                        **Expected Output 1:**
-                        {
-                        "start_location": {
-                            "Governorate": "الكرك",
-                            "District": null,
-                            "Town": null,
-                            "Neighborhood": null,
-                            "Name_of_location": "ميدان صلاح الدين الايوبي",
-                        },
-                        "end_location": {
-                            "end_Governorate": "الكرك",
-                            "end_District": null,
-                            "end_Town": null,
-                            "end_Neighborhood": null,
-                            "end_Name_of_location": "ساحة مدرسة الكرك الثانوية",
-                        },
+                    # Output Format
 
-                        ---
+                    - Output a well-structured, single nested JSON object with exactly two keys:
+                        - "start_location" and "end_location" are JSON objects, each with the fields "Governorate", "District", "Town", "Neighborhood", "Name_of_location", and "government_building".
+                        - All five location keys must be present in each sub-object; string or null values as appropriate.
+                        - "government_building" is a boolean (true or false) in each sub-object.
+                    - Do not output any text or explanation outside the JSON object.
+                    - Example syntax:
+                    {
+                    "start_location": {
+                        "Governorate": "...",
+                        "District": ...,
+                        "Town": ...,
+                        "Neighborhood": ...,
+                        "Name_of_location": ...,
+                        "government_building": true
+                    },
+                    "end_location": {
+                        "end_Governorate": "...",
+                        "end_District": ...,
+                        "end_Town": ...,
+                        "end_Neighborhood": ...,
+                        "end_Name_of_location": ...,
+                        "end_government_building": false
+                    }
+                    }
 
-                        **Example Input 2:**
-                        انطلقت مسيرات واعتصامات في محافظات الشمال طالبت برحيل الحكومة، واعتبر مراقبون أن المسيرات والاعتصامات تميزت برفع شعارات تجاوزت الخطوط الحمراء لاسيما في محافظة جرش. مسيرة اربد : نظمت الحركة الاسلامية في محافظة اربد مسيرة جماهيرية حاشدة انطلقت من امام مسجد جامعة اليرموك. وتأتي هذه المسيرة في سياق الفعاليات التي دعت الحركة الاسلامية لتنظيمها في كافة محافظات المملكة
+                    # Examples
 
-                        **Expected Output 2:**
-                        {
-                        "start_location": {
-                            "Governorate": "اربد",
-                            "District": null,
-                            "Town": null,
-                            "Neighborhood": null,
-                            "Name_of_location": "مسجد جامعة اليرموك",
-                        },
-                        "end_location": {
-                            "end_Governorate": null,
-                            "end_District": null,
-                            "end_Town": null,
-                            "end_Neighborhood": null,
-                            "end_Name_of_location": null
-                        }
+                    **Example Input 1:**
+                    نظم الحراك الشبابي الشعبي في محافظة الكرك مسيرة انطلقت بعد صلاة الجمعة من ميدان صلاح الدين الايوبي بوسط المدينة وانتهت في ساحة مدرسة الكرك الثانوية
 
-                        ---
+                    **Expected Output 1:**
+                    {
+                    "start_location": {
+                        "Governorate": "الكرك",
+                        "District": null,
+                        "Town": null,
+                        "Neighborhood": null,
+                        "Name_of_location": "ميدان صلاح الدين الايوبي",
+                        "government_building": false
+                    },
+                    "end_location": {
+                        "end_Governorate": "الكرك",
+                        "end_District": null,
+                        "end_Town": null,
+                        "end_Neighborhood": null,
+                        "end_Name_of_location": "ساحة مدرسة الكرك الثانوية",
+                        "end_government_building": false
+                    }
+                    }
 
-                        *Note:* Real input passages may be longer and more complex; ensure all possible location fields are extracted or left null if absent.
+                    ---
 
-                        # Notes
+                    **Example Input 2:**
+                    انطلقت وقفة احتجاجية أمام مبنى محافظة عمان للمطالبة بتحسين الوضع الاقتصادي.
 
-                        - Only output the single nested JSON object, formatted as shown above; do not include explanation, notes, or code formatting.
-                        - Extract as much location detail as possible; fields not present in Arabic text must be set to null.
-                        - If no protest movement is mentioned, set the values for "end_location" to null.
-                        - Always follow the JSON key order as shown in the examples.
+                    **Expected Output 2:**
+                    {
+                    "start_location": {
+                        "Governorate": "عمان",
+                        "District": null,
+                        "Town": null,
+                        "Neighborhood": null,
+                        "Name_of_location": "مبنى محافظة عمان",
+                        "government_building": true
+                    },
+                    "end_location": {
+                        "end_Governorate": null,
+                        "end_District": null,
+                        "end_Town": null,
+                        "end_Neighborhood": null,
+                        "end_Name_of_location": null,
+                        "end_government_building": null
+                    }
+                    }
 
-                        **REMINDER:**
-                        Output a single nested JSON object with "start_location", and "end_location" keys. "start_location" and "end_location" each contain the full set of specified location fields. Do not output multiple JSONs or any additional text.
+                    ---
+
+                    **Example Input 3:**
+                    انطلقت مسيرة في محافظة جرش من مسجد السلام حتى وصلت إلى ساحة البلدية في وسط المدينة.
+
+                    **Expected Output 3:**
+                    {
+                    "start_location": {
+                        "Governorate": "جرش",
+                        "District": null,
+                        "Town": null,
+                        "Neighborhood": null,
+                        "Name_of_location": "مسجد السلام",
+                        "government_building": false
+                    },
+                    "end_location": {
+                        "end_Governorate": "جرش",
+                        "end_District": null,
+                        "end_Town": null,
+                        "end_Neighborhood": null,
+                        "end_Name_of_location": "ساحة البلدية",
+                        "end_government_building": true
+                    }
+                    }
+
+                    ---
+
+                    **Example Input 4:**
+                    انطلقت مسيرات واعتصامات في محافظات الشمال طالبت برحيل الحكومة، واعتبر مراقبون أن المسيرات والاعتصامات تميزت برفع شعارات تجاوزت الخطوط الحمراء لاسيما في محافظة جرش. مسيرة اربد : نظمت الحركة الاسلامية في محافظة اربد مسيرة جماهيرية حاشدة انطلقت من امام مسجد جامعة اليرموك. وتأتي هذه المسيرة في سياق الفعاليات التي دعت الحركة الاسلامية لتنظيمها في كافة محافظات المملكة
+
+                    **Expected Output 4:**
+                    {
+                    "start_location": {
+                        "Governorate": "اربد",
+                        "District": null,
+                        "Town": null,
+                        "Neighborhood": null,
+                        "Name_of_location": "مسجد جامعة اليرموك",
+                        "government_building": false
+                    },
+                    "end_location": {
+                        "end_Governorate": null,
+                        "end_District": null,
+                        "end_Town": null,
+                        "end_Neighborhood": null,
+                        "end_Name_of_location": null,
+                        "end_government_building": null
+                    }
+                    }
+
+                    ---
+
+                    (*In a real use case, passages may be much longer or location details less clear; always apply harmonization cautiously and only when certainty exists.*)
+
+                    # Notes
+
+                    - For each location, the "government_building" key should only be true if the site is clearly or explicitly described as an official government institution/building.
+                    - When harmonizing, only fill details if the start and end locations can be confidently matched as being in the same jurisdiction.
+                    - Leave all fields null if uncertain; never guess.
+                    - Output only the JSON object—no explanation, formatting, or labels.
+
+                    REMINDER:
+                    Extract maximum location detail for both start and end of the protest, harmonizing fields only when it is certain they describe the same area. For each location separately, include a "government_building" boolean in the object. Output only the completed JSON object.
         """,
 
         "response_format": "json_object",
@@ -792,8 +954,8 @@
                     - "multi_site_tag" must be a unique string for each multi-sited event and must always follow the correct format.
                     - The "national_strike" value should be true only if the event is explicitly a strike AND is described as occurring at a national level or across multiple locations simultaneously (e.g., "إضراب وطني", "إضراب عام في جميع المحافظات"). If the event is not a strike or is only a local strike, set to false.
                     - "is_recurring" is true only if the protest is indicated as recurring or repeated in the passage.
-
                     """,
+
         "response_format": "json_object",
         "temperature": 0.10,
         "top_p": 0.20
@@ -1106,6 +1268,7 @@
                             - Civil society organization: Non-governmental, non-profit groups (e.g., charities, NGOs, community associations) working on social, cultural, or humanitarian issues (e.i.: جمعية, منظمة).
                             - Activist group: Informal or formal groups mobilized around a specific cause, campaign, or movement (e.g., environmental, human rights, anti-corruption)  (e.i.: ناشطين, حركة).
                             -Tribe: Social group organized around kinship, clan, or ethnic lineage, often with collective leadership or identity (e.i.: عشيرة, قبيلة).
+                            - Other: Use only if none of the above types fit the organizer.
 
                         # Steps
 
@@ -1173,12 +1336,12 @@
 
                         Example 4:
                         Arabic Input:
-                        "تجمّع أهالي إحدى القبائل المحلية للاحتجاج على القرار، وتحدّث باسمهم أحد وجهاء القبيلة."
+                        "نظمت قبائل محلية مظاهرة للاحتجاج على القرار، وتحدّث باسمهم أحد وجهاء القبيلة."
 
                         JSON Output:
                         {
-                        "organizing_actor": ["أهالي إحدى القبائل المحلية"],
-                        "organizing_actor_local_class": "قبائل المحلية",
+                        "organizing_actor": ["قبائل محلية"],
+                        "organizing_actor_local_class": "قبائل محلية",
                         "organizing_actor_national_class": null,
                         "spokesperson_name": null,
                         "organization_actor_type": ["tribe"]
@@ -1187,7 +1350,7 @@
                         # Notes
 
                         - Always use the Arabic text as stated for names/branches.
-                        - Do not confuse organizers with participants; only extract those who planned, called for, or organized the protest, not merely attendees.
+                        - IMPORTANT : Do not confuse organizers with participants; only extract those who planned, called for, or organized the protest, not merely attendees.
                         - For "organization_actor_type" array: only list types justified directly by the text per the fixed allowed list.
                         - Organizers must be entities that organized or called for the protest, not just attendees, or the people who decided to protest spontaneously.
                         - No field must be omitted. Use null or [null] as defined; no empty strings.
@@ -1206,22 +1369,24 @@
         "system_prompt": """
                         Extract detailed information about the targeted authorities or entities of a protest demand from an Arabic-language passage. Apply precision and clear logic for identifying and categorizing the target, using only the field scheme, value lists, and steps below.
 
-                        A "target" is any authority, office, or entity explicitly or implicitly addressed by the protesters' demands—who the protest action is seeking to influence or pressure. Do not infer target unless there are clear cues in the text. Targets are generally those to whom the core demands are addressed, or about whom the protest's grievances are directed.
+                        A "target" is any authority, office, or entity explicitly or implicitly addressed by the protesters' demands — who the protest action is seeking to influence or pressure. Do not infer target unless there are clear cues in the text. Targets are generally those to whom the core demands are addressed, or about whom the protest's grievances are directed.
 
                         Analyze the passage for explicit or clearly implied protest targets using keywords such as "طالب" (demanded), "احتج ضد" (protested against), "ضد قرار" (against [entity] decision), etc. — but only extract targets if clearly connected to the grievance or action described.
 
                         - Strictly use these lists for "target_category" and "target_level":
                             - "target_category": [government; foreign government; security services; private company]
-                            - "target_level": [municipality; governorate; central ministry; Prime Minister; security services; monarch]
+                            - "target_level": [municipality/district; governorate; central ministry; Prime Minister; security services; monarch]
 
                         - If there is more than one explicit target, include "target_category2" for the second category mentioned (otherwise null).
 
                         Guidelines:
                         - Extract targets only if clearly stated or strongly implied in the passage as the main addressee or object of the protest demand.
-                        - Do not infer unstated targets; if target(s) are not specified, set all target fields to null/[null] as applicable.
+                        - Do not infer unstated targets; if target(s) are not specified, or they don't represent a clear authority/entity, set all target fields to null/[null] as applicable.
                         - Assign categories and levels using only the fixed lists, matching as precisely as possible based on the information in the passage.
                         - Do not confuse targets (those demanded-from or opposed) with organizers, participants, or supporters.
+                        - Target level indicates the administrative or authority level of the target entity in Jordan.
                         - If multiple targets are referenced, capture primary and secondary (up to two) as per the scheme.
+                        - Targets are generally entities with authority or responsibility related to the protest demands.
 
                         Only output a single, valid JSON object with NO code block, NO explanation, and NO extra text.
 
@@ -1428,7 +1593,7 @@
                     * "repression": Boolean. true if the passage explicitly reports violence or coercive actions carried out **by actors responding to the protest** (e.g., arrests, use of tear gas, live fire, beatings, detentions, dispersal), otherwise false.
                     * "repression_reports": Array of strings. Exact quoted phrases from the passage **or** very short literal paraphrases strictly confined to what the passage states, describing violence or coercive actions by responding actors. If none, use [].
                     * "responding_actor": Array of strings. Names or descriptions of those responding with violence as **explicitly named in the passage** (e.g., "الشرطة", "قوات الدرك", "الجيش"). If none named, use [].
-                    * "responding_actor_class": Array of strings. For each responding actor named, assign one or more classes from: ["Police", "military", "intelligence services", "non-state actors", "null"]. Use "Police" for civilian police/gendarmerie/directions like "قوات الدرك" or "شرطة"; "military" for armed forces/army; "intelligence services" for terms clearly denoting intelligence/security agencies; "non-state actors" for militias or armed civilian groups acting outside state forces; use "null" only when no actor is named or actor cannot be assigned using the passage wording alone. If responding_actor is empty, set this to [].
+                    * "responding_actor_class": Array of strings. For each responding actor named, assign one or more classes from: ["Police", "military", "intelligence services", "Darak", "unspecified security forces","non-state actors", "null"]. Use "Police" for civilian police like "شرطة"; "military" for armed forces/army; "intelligence services" for terms clearly denoting intelligence/security agencies; "Darak" for "قوات الدرك" or "الدرك"; "unspecified security forces" for terms like "الأجهزة اللأمنية"; "non-state actors" for militias or armed civilian groups acting outside state forces; use "null" only when no actor is named or actor cannot be assigned using the passage wording alone. If responding_actor is empty, set this to [].
                     * "protesters_violence": Boolean. true if the passage explicitly reports violent acts committed **by protesters** (e.g., burning tires, throwing stones, assault, property damage), otherwise false.
                     * "protesters_violence_reports": Array of strings. Exact quoted phrases or short literal paraphrases taken strictly from the passage that describe violence by protesters. If none, use [].
                     * "Obstruction_of_space": Boolean. true if the passage explicitly reports protesters blocking or occupying public space (e.g., "أغلقوا الطرق", "أغلقوا المدخل", "أقاموا حواجز", "اعتصام يغلق الشارع"), otherwise false.
@@ -1482,7 +1647,7 @@
                     "repression": true,
                     "repression_reports": ["حضرت على الفور قوات الدرك من اجل السيطرة على الوضع والحد من اعمال الشغب"],
                     "responding_actor": ["قوات الدرك"],
-                    "responding_actor_class": ["Police"],
+                    "responding_actor_class": ["Darak"],
                     "protesters_violence": true,
                     "protesters_violence_reports": ["قام المئات من ابناء البلدة بحرق الاطارات واغلاق الطرق الرئيسية","اندلعت اعمال شغب"],
                     "Obstruction_of_space": true

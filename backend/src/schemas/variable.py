@@ -76,6 +76,10 @@ class VariableCreate(BaseModel):
         None,
         description="Configuration for handling edge cases"
     )
+    display_name: Optional[str] = Field(None, max_length=255, description="Human-readable display name")
+    max_values: int = Field(1, ge=1, description="Maximum number of values to extract")
+    default_value: Optional[str] = Field(None, description="Default value when extraction returns null")
+    depends_on: Optional[List[UUID]] = Field(None, description="Variable IDs this depends on")
     order: int = Field(..., ge=1, description="Display order in schema")
 
     @field_validator("classification_rules")
@@ -93,6 +97,10 @@ class VariableUpdate(BaseModel):
     classification_rules: Optional[Dict[str, Any]] = None
     uncertainty_handling: Optional[UncertaintyHandling] = None
     edge_cases: Optional[EdgeCases] = None
+    display_name: Optional[str] = Field(None, max_length=255)
+    max_values: Optional[int] = Field(None, ge=1)
+    default_value: Optional[str] = None
+    depends_on: Optional[List[UUID]] = None
     order: Optional[int] = Field(None, ge=1)
 
 
@@ -106,6 +114,10 @@ class Variable(BaseModel):
     classification_rules: Optional[Dict[str, Any]] = None
     uncertainty_handling: Optional[Dict[str, Any]] = None
     edge_cases: Optional[Dict[str, Any]] = None
+    display_name: Optional[str] = None
+    max_values: int = 1
+    default_value: Optional[str] = None
+    depends_on: Optional[List[Any]] = None
     order: int
     created_at: datetime
     updated_at: datetime

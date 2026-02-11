@@ -4,7 +4,7 @@ Prompt model - represents a generated LLM prompt for a variable.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -22,12 +22,14 @@ class Prompt(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     variable_id = Column(UUID(as_uuid=True), ForeignKey("variables.id", ondelete="CASCADE"), nullable=False)
     prompt_text = Column(Text, nullable=False)
-    model_config = Column(JSONB, nullable=False)
+    model_config_ = Column("model_config", JSONB, nullable=False)
     version = Column(Integer, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    response_schema = Column(JSONB, nullable=True, comment="Expected JSON response schema")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
     variable = relationship("Variable", back_populates="prompts")
 
     def __repr__(self) -> str:
-        return f"<Prompt(id={self.id}, variable_id={self.variable_id}, version={self.version})>"
+        return f"<Prompt(id={self.id}, variable_id={self.variable_id}, version={self.version}, active={self.is_active})>"

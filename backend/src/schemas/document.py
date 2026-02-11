@@ -2,11 +2,12 @@
 Pydantic schemas for Document API requests and responses.
 """
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.models.document import ContentType
+from src.models.document import ContentType, DocumentStatus
 
 
 class DocumentCreate(BaseModel):
@@ -30,6 +31,9 @@ class Document(BaseModel):
     name: str
     content_type: ContentType
     size_bytes: int
+    status: DocumentStatus = DocumentStatus.UPLOADED
+    word_count: Optional[int] = None
+    error_message: Optional[str] = None
     uploaded_at: datetime
 
     class Config:

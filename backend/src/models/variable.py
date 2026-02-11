@@ -56,6 +56,10 @@ class Variable(Base):
         nullable=True,
         comment="Edge case handling: missing_field_action, validation_rules, specific_scenarios"
     )
+    display_name = Column(String(255), nullable=True)
+    max_values = Column(Integer, nullable=False, default=1)
+    default_value = Column(Text, nullable=True)
+    depends_on = Column(JSONB, nullable=True, comment="List of variable IDs this depends on")
     order = Column(Integer, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

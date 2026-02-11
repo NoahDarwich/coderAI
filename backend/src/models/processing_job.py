@@ -22,6 +22,7 @@ class JobStatus(str, enum.Enum):
     """Job status enumeration."""
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
+    PAUSED = "PAUSED"
     COMPLETE = "COMPLETE"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -41,6 +42,9 @@ class ProcessingJob(Base):
     status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING)
     document_ids = Column(JSONB, nullable=False)
     progress = Column(Integer, nullable=False, default=0)
+    documents_processed = Column(Integer, nullable=False, default=0)
+    documents_failed = Column(Integer, nullable=False, default=0)
+    consecutive_failures = Column(Integer, nullable=False, default=0)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
@@ -52,7 +56,8 @@ class ProcessingJob(Base):
     # Valid state transitions
     _VALID_TRANSITIONS = {
         JobStatus.PENDING: [JobStatus.PROCESSING, JobStatus.CANCELLED],
-        JobStatus.PROCESSING: [JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED],
+        JobStatus.PROCESSING: [JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.PAUSED],
+        JobStatus.PAUSED: [JobStatus.PROCESSING, JobStatus.CANCELLED],
         JobStatus.COMPLETE: [],  # Terminal state
         JobStatus.FAILED: [],    # Terminal state
         JobStatus.CANCELLED: [], # Terminal state

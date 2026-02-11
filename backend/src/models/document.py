@@ -19,6 +19,14 @@ class ContentType(str, enum.Enum):
     TXT = "TXT"
 
 
+class DocumentStatus(str, enum.Enum):
+    """Document processing status."""
+    UPLOADED = "UPLOADED"
+    PARSED = "PARSED"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
 class Document(Base):
     """
     Document model.
@@ -33,6 +41,9 @@ class Document(Base):
     content = Column(Text, nullable=False)
     content_type = Column(Enum(ContentType), nullable=False)
     size_bytes = Column(Integer, nullable=False)
+    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADED)
+    word_count = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
@@ -41,4 +52,4 @@ class Document(Base):
     processing_logs = relationship("ProcessingLog", back_populates="document", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Document(id={self.id}, name={self.name}, content_type={self.content_type})>"
+        return f"<Document(id={self.id}, name={self.name}, status={self.status})>"

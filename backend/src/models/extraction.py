@@ -1,14 +1,23 @@
 """
 Extraction model - represents a single extracted value.
 """
+import enum
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Integer, Boolean, ForeignKey, Text, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Integer, Enum, ForeignKey, Text, CheckConstraint, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
+
+
+class ExtractionStatus(str, enum.Enum):
+    """Extraction quality status."""
+    EXTRACTED = "EXTRACTED"
+    VALIDATED = "VALIDATED"
+    FLAGGED = "FLAGGED"
+    FAILED = "FAILED"
 
 
 class Extraction(Base):
@@ -23,16 +32,20 @@ class Extraction(Base):
     job_id = Column(UUID(as_uuid=True), ForeignKey("processing_jobs.id", ondelete="CASCADE"), nullable=False)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     variable_id = Column(UUID(as_uuid=True), ForeignKey("variables.id", ondelete="CASCADE"), nullable=False)
-    value = Column(Text, nullable=True)
-    confidence = Column(Integer, nullable=True)  # Changed from Float to Integer (0-100 scale)
+    value = Column(JSONB, nullable=True)
+    confidence = Column(Integer, nullable=True)  # 0-100 scale
     source_text = Column(Text, nullable=True)
-    flagged = Column(Boolean, nullable=False, default=False)  # For flagging extractions for review
-    review_notes = Column(Text, nullable=True)  # Optional notes when flagging
+    status = Column(Enum(ExtractionStatus), nullable=False, default=ExtractionStatus.EXTRACTED)
+    error_message = Column(Text, nullable=True)
+    entity_index = Column(Integer, nullable=True, comment="Index for multi-entity extraction")
+    entity_text = Column(Text, nullable=True, comment="Entity text for entity-level extraction")
+    prompt_version = Column(Integer, nullable=True, comment="Version of prompt used for extraction")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Constraints
     __table_args__ = (
         CheckConstraint("confidence >= 0 AND confidence <= 100", name="check_confidence_range"),
+        UniqueConstraint("job_id", "document_id", "variable_id", "entity_index", name="uq_extraction_job_doc_var_entity"),
     )
 
     # Relationships
@@ -42,4 +55,4 @@ class Extraction(Base):
     feedback = relationship("ExtractionFeedback", back_populates="extraction", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Extraction(id={self.id}, variable_id={self.variable_id}, confidence={self.confidence})>"
+        return f"<Extraction(id={self.id}, variable_id={self.variable_id}, status={self.status})>"

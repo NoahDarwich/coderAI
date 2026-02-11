@@ -106,11 +106,16 @@ class ExportService:
         # Build data for DataFrame
         data = []
         for extraction, document, variable in rows:
+            # Handle JSONB values: serialize complex types to string for export
+            value = extraction.value
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, default=str)
+
             row = {
                 "document_id": str(document.id),
                 "document_name": document.name,
                 "variable_name": variable.name,
-                "value": extraction.value,
+                "value": value,
             }
 
             if include_confidence:

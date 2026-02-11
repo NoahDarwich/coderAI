@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_db
-from src.models.document import ContentType, Document
+from src.models.document import ContentType, Document, DocumentStatus
 from src.models.project import Project
 from src.schemas.document import (
     Document as DocumentSchema,
@@ -108,15 +108,28 @@ async def upload_document(
 
     # Parse document and extract text
     try:
-        # Create file-like object from bytes
         from io import BytesIO
 
         file_obj = BytesIO(file_content)
         extracted_text = parser(file_obj)
     except DocumentProcessingError as e:
+        # Create failed document record
+        document = Document(
+            project_id=project_id,
+            name=filename,
+            content="",
+            content_type=content_type,
+            size_bytes=file_size,
+            status=DocumentStatus.FAILED,
+            error_message=str(e),
+        )
+        db.add(document)
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )
+
+    word_count = len(extracted_text.split()) if extracted_text else 0
 
     # Create document record
     document = Document(
@@ -125,6 +138,8 @@ async def upload_document(
         content=extracted_text,
         content_type=content_type,
         size_bytes=file_size,
+        status=DocumentStatus.READY,
+        word_count=word_count,
     )
 
     db.add(document)
@@ -188,6 +203,8 @@ async def create_text_document(
             detail="Text content exceeds 10MB limit",
         )
 
+    word_count = len(text_content.split()) if text_content else 0
+
     # Create document record
     document = Document(
         project_id=project_id,
@@ -195,6 +212,8 @@ async def create_text_document(
         content=text_content,
         content_type=ContentType.TXT,
         size_bytes=size_bytes,
+        status=DocumentStatus.READY,
+        word_count=word_count,
     )
 
     db.add(document)

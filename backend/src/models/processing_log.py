@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base
@@ -17,6 +17,19 @@ class LogLevel(str, enum.Enum):
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
+
+
+class EventType(str, enum.Enum):
+    """Structured event types for processing logs."""
+    JOB_STARTED = "JOB_STARTED"
+    DOC_STARTED = "DOC_STARTED"
+    DOC_COMPLETED = "DOC_COMPLETED"
+    DOC_FAILED = "DOC_FAILED"
+    JOB_COMPLETED = "JOB_COMPLETED"
+    JOB_FAILED = "JOB_FAILED"
+    JOB_PAUSED = "JOB_PAUSED"
+    JOB_RESUMED = "JOB_RESUMED"
+    JOB_CANCELLED = "JOB_CANCELLED"
 
 
 class ProcessingLog(Base):
@@ -32,7 +45,9 @@ class ProcessingLog(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
     variable_id = Column(UUID(as_uuid=True), ForeignKey("variables.id", ondelete="SET NULL"), nullable=True)
     log_level = Column(Enum(LogLevel), nullable=False)
+    event_type = Column(Enum(EventType), nullable=True)
     message = Column(Text, nullable=False)
+    metadata_ = Column("metadata", JSONB, nullable=True, comment="Structured event metadata")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
@@ -41,4 +56,4 @@ class ProcessingLog(Base):
     variable = relationship("Variable", back_populates="processing_logs")
 
     def __repr__(self) -> str:
-        return f"<ProcessingLog(id={self.id}, level={self.log_level}, message={self.message[:50]})>"
+        return f"<ProcessingLog(id={self.id}, level={self.log_level}, event={self.event_type})>"

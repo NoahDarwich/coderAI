@@ -22,13 +22,16 @@ from src.schemas.processing import (
     DocumentResult,
     Extraction as ExtractionSchema,
     ExtractionDataPoint,
+    ExtractionDetail,
     FlagUpdate,
     JobCreate,
     JobDetail,
     JobResults,
+    JobStatistics,
     ProcessingJob as ProcessingJobSchema,
     ProcessingLogEntry,
     ProjectResults,
+    VariableStatistics,
 )
 from src.services.job_manager import JobManager
 
@@ -227,8 +230,6 @@ async def cancel_job(
         )
 
     # Check if job can be cancelled
-    from src.models.processing_job import JobStatus
-
     if job.status in [JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -238,6 +239,78 @@ async def cancel_job(
     # Mark as cancelled
     job.status = JobStatus.CANCELLED
     await db.commit()
+
+
+@router.post("/api/v1/jobs/{job_id}/pause", response_model=ProcessingJobSchema)
+async def pause_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ProcessingJobSchema:
+    """
+    Pause a processing job. The job will stop after the current document completes.
+    """
+    result = await db.execute(
+        select(ProcessingJob).where(ProcessingJob.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job with id {job_id} not found",
+        )
+
+    if not job.can_transition_to(JobStatus.PAUSED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot pause job with status {job.status.value}",
+        )
+
+    job.transition_to(JobStatus.PAUSED)
+    await db.commit()
+    await db.refresh(job)
+
+    return ProcessingJobSchema.model_validate(job)
+
+
+@router.post("/api/v1/jobs/{job_id}/resume", response_model=ProcessingJobSchema)
+async def resume_job(
+    job_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> ProcessingJobSchema:
+    """
+    Resume a paused processing job. Re-schedules the background task.
+    Already-processed documents will be skipped.
+    """
+    result = await db.execute(
+        select(ProcessingJob).where(ProcessingJob.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job with id {job_id} not found",
+        )
+
+    if job.status != JobStatus.PAUSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Can only resume PAUSED jobs, current status: {job.status.value}",
+        )
+
+    # Set to PENDING so process_job_background can transition to PROCESSING
+    job.status = JobStatus.PENDING
+    job.consecutive_failures = 0
+    await db.commit()
+    await db.refresh(job)
+
+    # Re-schedule background task
+    from src.services.job_manager import process_job_background
+    background_tasks.add_task(process_job_background, job_id=job.id)
+
+    return ProcessingJobSchema.model_validate(job)
 
 
 @router.get("/api/v1/jobs/{job_id}/results", response_model=JobResults)
@@ -294,133 +367,6 @@ async def get_job_results(
     )
 
 
-@router.get("/api/v1/projects/{project_id}/results", response_model=ProjectResults)
-async def get_project_results(
-    project_id: UUID,
-    min_confidence: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence threshold (0-100)"),
-    db: AsyncSession = Depends(get_db),
-) -> ProjectResults:
-    """
-    Get all extraction results for a project, grouped by document (MVP feature).
-
-    This endpoint aggregates results across all completed jobs in the project
-    and organizes them by document for easy display in data tables.
-
-    Args:
-        project_id: Project UUID
-        min_confidence: Optional minimum confidence threshold (0-100 scale)
-        db: Database session
-
-    Returns:
-        Project results with documents and their extractions
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    # Verify project exists
-    proj_result = await db.execute(select(Project).where(Project.id == project_id))
-    project = proj_result.scalar_one_or_none()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
-
-    # Get all completed jobs for project
-    jobs_result = await db.execute(
-        select(ProcessingJob)
-        .where(ProcessingJob.project_id == project_id)
-        .where(ProcessingJob.status == JobStatus.COMPLETE)
-    )
-    completed_jobs = jobs_result.scalars().all()
-
-    if not completed_jobs:
-        # No completed jobs yet
-        return ProjectResults(
-            project_id=project_id,
-            documents=[],
-            total_documents=0,
-        )
-
-    # Get all variables for the project (to build column structure)
-    vars_result = await db.execute(
-        select(Variable)
-        .where(Variable.project_id == project_id)
-        .order_by(Variable.order)
-    )
-    variables = vars_result.scalars().all()
-
-    # Build query for all extractions from completed jobs
-    job_ids = [job.id for job in completed_jobs]
-    query = select(Extraction).where(Extraction.job_id.in_(job_ids))
-
-    # Apply confidence filter if provided (convert from 0-100 to 0-1)
-    if min_confidence is not None:
-        query = query.where(Extraction.confidence >= min_confidence)
-
-    # Execute query
-    extractions_result = await db.execute(query)
-    all_extractions = extractions_result.scalars().all()
-
-    # Group extractions by document
-    from collections import defaultdict
-    doc_extractions = defaultdict(list)
-
-    for extraction in all_extractions:
-        doc_extractions[extraction.document_id].append(extraction)
-
-    # Build document results
-    document_results = []
-
-    for doc_id, extractions in doc_extractions.items():
-        # Get document details
-        doc_result = await db.execute(
-            select(Document).where(Document.id == doc_id)
-        )
-        document = doc_result.scalar_one_or_none()
-
-        if not document:
-            continue
-
-        # Build data dictionary {variable_name: {value, confidence, source_text}}
-        data = {}
-        for extraction in extractions:
-            # Get variable name
-            var_result = await db.execute(
-                select(Variable).where(Variable.id == extraction.variable_id)
-            )
-            variable = var_result.scalar_one_or_none()
-
-            if variable:
-                data[variable.name] = ExtractionDataPoint(
-                    value=extraction.value,
-                    confidence=extraction.confidence if extraction.confidence is not None else 0,
-                    source_text=extraction.source_text,
-                )
-
-        # Calculate average confidence
-        confidences = [e.confidence for e in extractions if e.confidence is not None]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-
-        document_results.append(
-            DocumentResult(
-                document_id=doc_id,
-                document_name=document.name,
-                data=data,
-                flagged=False,  # TODO: Add flagging support
-                extracted_at=extractions[0].created_at if extractions else document.uploaded_at,
-                average_confidence=int(avg_confidence),
-            )
-        )
-
-    return ProjectResults(
-        project_id=project_id,
-        documents=document_results,
-        total_documents=len(document_results),
-    )
-
-
 @router.post(
     "/api/v1/extractions/{extraction_id}/feedback",
     response_model=Feedback,
@@ -462,7 +408,8 @@ async def create_feedback(
     # Create feedback
     feedback = ExtractionFeedback(
         extraction_id=extraction_id,
-        is_correct=feedback_data.is_correct,
+        feedback_type=feedback_data.feedback_type,
+        corrected_value=feedback_data.corrected_value,
         user_comment=feedback_data.user_comment,
     )
 
@@ -508,9 +455,10 @@ async def flag_extraction(
             detail=f"Extraction with id {extraction_id} not found",
         )
 
-    # Update flag status
-    extraction.flagged = flag_data.flagged
-    extraction.review_notes = flag_data.review_notes
+    # Update extraction status
+    extraction.status = flag_data.status
+    if flag_data.error_message is not None:
+        extraction.error_message = flag_data.error_message
 
     await db.commit()
     await db.refresh(extraction)
@@ -562,7 +510,8 @@ async def get_project_results(
     if min_confidence is not None:
         query = query.where(Extraction.confidence >= min_confidence)
     if flagged_only:
-        query = query.where(Extraction.flagged == True)
+        from src.models.extraction import ExtractionStatus
+        query = query.where(Extraction.status == ExtractionStatus.FLAGGED)
 
     query = query.order_by(Document.name, Variable.order)
 
@@ -591,7 +540,8 @@ async def get_project_results(
         )
 
         # If any extraction is flagged, mark document as flagged
-        if extraction.flagged:
+        from src.models.extraction import ExtractionStatus
+        if extraction.status == ExtractionStatus.FLAGGED:
             documents_map[doc_id]["flagged"] = True
 
     # Convert to list
@@ -773,8 +723,6 @@ async def get_extraction_detail(
         HTTPException: 404 if extraction not found
     """
     # Get extraction with related document and variable
-    from src.schemas.processing import ExtractionDetail
-    
     result = await db.execute(
         select(Extraction, Document, Variable)
         .join(Document, Extraction.document_id == Document.id)
@@ -820,8 +768,6 @@ async def get_job_statistics(
     Raises:
         HTTPException: 404 if job not found
     """
-    from src.schemas.processing import JobStatistics, VariableStatistics
-    
     # Verify job exists
     result = await db.execute(
         select(ProcessingJob).where(ProcessingJob.id == job_id)
@@ -860,7 +806,8 @@ async def get_job_statistics(
     # Calculate overall statistics
     total_extractions = len(extraction_rows)
     successful_extractions = sum(1 for e, _ in extraction_rows if e.value is not None)
-    flagged_count = sum(1 for e, _ in extraction_rows if e.flagged)
+    from src.models.extraction import ExtractionStatus as ES
+    flagged_count = sum(1 for e, _ in extraction_rows if e.status == ES.FLAGGED)
     
     # Calculate average confidence
     confidences = [e.confidence for e, _ in extraction_rows if e.confidence is not None]
@@ -883,7 +830,7 @@ async def get_job_statistics(
             variable_data[var_id]['successful'] += 1
         if extraction.confidence is not None:
             variable_data[var_id]['confidences'].append(extraction.confidence)
-        if extraction.flagged:
+        if extraction.status == ES.FLAGGED:
             variable_data[var_id]['flagged'] += 1
     
     variable_statistics = []

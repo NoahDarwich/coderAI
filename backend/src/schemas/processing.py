@@ -2,11 +2,12 @@
 Pydantic schemas for processing job and extraction API requests and responses.
 """
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from src.models.extraction import ExtractionStatus
 from src.models.processing_job import JobType, JobStatus
 
 
@@ -24,6 +25,9 @@ class ProcessingJob(BaseModel):
     status: JobStatus
     document_ids: List[UUID]
     progress: int = Field(ge=0, le=100, description="Progress percentage (0-100)")
+    documents_processed: int = Field(default=0, description="Number of documents successfully processed")
+    documents_failed: int = Field(default=0, description="Number of documents that failed processing")
+    consecutive_failures: int = Field(default=0, description="Current consecutive failure count")
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
 
@@ -37,11 +41,14 @@ class Extraction(BaseModel):
     job_id: UUID
     document_id: UUID
     variable_id: UUID
-    value: Optional[str]
+    value: Optional[Any] = None
     confidence: Optional[int] = Field(None, ge=0, le=100, description="Confidence score (0-100)")
-    source_text: Optional[str]
-    flagged: bool = False
-    review_notes: Optional[str] = None
+    source_text: Optional[str] = None
+    status: ExtractionStatus = ExtractionStatus.EXTRACTED
+    error_message: Optional[str] = None
+    entity_index: Optional[int] = None
+    entity_text: Optional[str] = None
+    prompt_version: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -77,13 +84,13 @@ class JobResults(BaseModel):
 
 class FlagUpdate(BaseModel):
     """Schema for flagging/unflagging an extraction."""
-    flagged: bool = Field(..., description="Whether extraction is flagged for review")
-    review_notes: Optional[str] = Field(None, max_length=1000, description="Optional review notes")
+    status: ExtractionStatus = Field(..., description="Extraction status (FLAGGED to flag, EXTRACTED to unflag)")
+    error_message: Optional[str] = Field(None, max_length=1000, description="Optional error/review message")
 
 
 class ExtractionDataPoint(BaseModel):
     """Single extraction value with metadata."""
-    value: Optional[str]
+    value: Optional[Any] = None
     confidence: int = Field(ge=0, le=100, description="Confidence score (0-100)")
     source_text: Optional[str] = None
 

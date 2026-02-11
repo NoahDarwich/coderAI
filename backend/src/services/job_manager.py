@@ -2,28 +2,36 @@
 Job manager service for creating and tracking processing jobs.
 
 This service manages background processing jobs using FastAPI BackgroundTasks.
-For production, this should be migrated to Arq + Redis for persistent job queue.
+Features:
+- Atomic per-document transactions with savepoints
+- Auto-pause on consecutive failures
+- Job resumability (skip already-processed documents)
+- Idempotent reprocessing (delete existing extractions before re-extraction)
+- Structured event logging
+- Prompt version tracking
 """
 import logging
 from datetime import datetime
-from typing import List
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.document import Document, DocumentStatus
+from src.models.extraction import Extraction, ExtractionStatus
 from src.models.processing_job import JobStatus, ProcessingJob
-from src.models.processing_log import LogLevel, ProcessingLog
+from src.models.processing_log import EventType, LogLevel, ProcessingLog
+from src.models.prompt import Prompt
 from src.models.project import Project
 from src.models.variable import Variable
-from src.services.extraction_service import ExtractionService
-from src.services.llm_client import LLMClientError
+from src.services.post_processor import post_process_extraction
 from src.services.text_extraction_service import create_extraction_service
-from src.models.document import Document
-from src.models.extraction import Extraction
 
 logger = logging.getLogger(__name__)
+
+MAX_CONSECUTIVE_FAILURES = 10
 
 
 class JobManager:
@@ -32,12 +40,6 @@ class JobManager:
     """
 
     def __init__(self, db: AsyncSession):
-        """
-        Initialize job manager.
-
-        Args:
-            db: Database session
-        """
         self.db = db
 
     async def create_job(
@@ -49,20 +51,7 @@ class JobManager:
     ) -> ProcessingJob:
         """
         Create a new processing job and schedule it for execution.
-
-        Args:
-            project_id: Project UUID
-            job_type: Job type (SAMPLE or FULL)
-            document_ids: List of document IDs to process
-            background_tasks: FastAPI background tasks
-
-        Returns:
-            Created job
-
-        Raises:
-            ValueError: If project not found or no documents provided
         """
-        # Verify project exists
         result = await self.db.execute(
             select(Project).where(Project.id == project_id)
         )
@@ -74,7 +63,6 @@ class JobManager:
         if not document_ids:
             raise ValueError("At least one document ID must be provided")
 
-        # Create job (convert UUID objects to strings for JSON storage)
         job = ProcessingJob(
             project_id=project_id,
             job_type=job_type,
@@ -87,34 +75,85 @@ class JobManager:
         await self.db.commit()
         await self.db.refresh(job)
 
-        # Schedule job for background execution
-        # Note: We need to pass the job_id, not the session
         background_tasks.add_task(
             process_job_background,
             job_id=job.id,
         )
 
         logger.info(f"Created job {job.id} with {len(document_ids)} documents")
-
         return job
+
+
+def _create_log(
+    job_id: UUID,
+    level: LogLevel,
+    event_type: EventType,
+    message: str,
+    document_id: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> ProcessingLog:
+    """Helper to create a structured processing log entry."""
+    return ProcessingLog(
+        job_id=job_id,
+        document_id=document_id,
+        log_level=level,
+        event_type=event_type,
+        message=message,
+        metadata_=metadata,
+    )
+
+
+async def _load_active_prompts(db: AsyncSession, variables: list) -> Dict[str, tuple]:
+    """
+    Load the active (highest version) prompt for each variable.
+
+    Returns:
+        Dict mapping variable_id (str) -> (prompt_text, version)
+    """
+    prompts: Dict[str, tuple] = {}
+    for variable in variables:
+        result = await db.execute(
+            select(Prompt)
+            .where(Prompt.variable_id == variable.id, Prompt.is_active == True)
+            .order_by(Prompt.version.desc())
+            .limit(1)
+        )
+        prompt = result.scalar_one_or_none()
+        if prompt:
+            prompts[str(variable.id)] = (prompt.prompt_text, prompt.version)
+    return prompts
+
+
+async def _get_processed_doc_ids(db: AsyncSession, job_id: UUID) -> set:
+    """
+    Get document IDs that already have extractions for this job.
+    Used for resumability — skip already-processed documents.
+    """
+    result = await db.execute(
+        select(Extraction.document_id)
+        .where(Extraction.job_id == job_id)
+        .distinct()
+    )
+    return {row[0] for row in result.all()}
 
 
 async def process_job_background(job_id: UUID):
     """
     Background task to process a job.
 
-    This function runs in the background and processes all documents in the job.
-
-    Args:
-        job_id: Job UUID
+    Features:
+    - Atomic per-document savepoints
+    - Auto-pause on consecutive failures
+    - Skip already-processed documents (for resume)
+    - Idempotent reprocessing (delete-before-insert)
+    - Prompt version tracking
+    - Structured event logging
     """
-    # Import here to avoid circular dependency
-    from src.core.database import async_session_maker
+    from src.core.database import AsyncSessionLocal
 
-    # Create new database session for background task
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         try:
-            # Get job
+            # Load job
             result = await db.execute(
                 select(ProcessingJob).where(ProcessingJob.id == job_id)
             )
@@ -124,20 +163,23 @@ async def process_job_background(job_id: UUID):
                 logger.error(f"Job {job_id} not found")
                 return
 
-            # Update job status to PROCESSING
+            # Transition to PROCESSING (handles PENDING->PROCESSING and PAUSED->PROCESSING)
             job.transition_to(JobStatus.PROCESSING)
             await db.commit()
 
-            # Log start
-            log = ProcessingLog(
+            # Log start/resume
+            is_resume = job.documents_processed > 0
+            event = EventType.JOB_RESUMED if is_resume else EventType.JOB_STARTED
+            db.add(_create_log(
                 job_id=job.id,
-                log_level=LogLevel.INFO,
-                message=f"Started processing job with {len(job.document_ids)} documents",
-            )
-            db.add(log)
+                level=LogLevel.INFO,
+                event_type=event,
+                message=f"{'Resumed' if is_resume else 'Started'} processing job with {len(job.document_ids)} documents",
+                metadata={"total_documents": len(job.document_ids), "already_processed": job.documents_processed},
+            ))
             await db.commit()
 
-            # Get all variables for project
+            # Load variables
             result = await db.execute(
                 select(Variable)
                 .where(Variable.project_id == job.project_id)
@@ -148,32 +190,52 @@ async def process_job_background(job_id: UUID):
             if not variables:
                 raise ValueError(f"No variables defined for project {job.project_id}")
 
-            # Initialize extraction service (MVP: using text extraction service)
-            text_extraction_service = create_extraction_service()
-            # extraction_service = ExtractionService(db)  # Old service using prompts
+            # Load active prompts for each variable
+            active_prompts = await _load_active_prompts(db, variables)
+            prompt_texts = {vid: pt for vid, (pt, _) in active_prompts.items()}
+            prompt_versions = {vid: ver for vid, (_, ver) in active_prompts.items()}
 
-            # Process each document
+            # Get already-processed document IDs (for resumability)
+            processed_doc_ids = await _get_processed_doc_ids(db, job.id)
+
+            # Build variable lookup by ID for post-processing
+            variable_by_id = {str(v.id): v for v in variables}
+
+            # Initialize extraction service
+            text_extraction_service = create_extraction_service()
+
             total_documents = len(job.document_ids)
-            documents_completed = 0
 
             for document_id in job.document_ids:
-                # Convert document_id from string to UUID
                 doc_uuid = UUID(document_id) if isinstance(document_id, str) else document_id
 
-                # Check if job was cancelled
+                # Skip already-processed documents (resume support)
+                if doc_uuid in processed_doc_ids:
+                    continue
+
+                # Check if job was cancelled or paused
                 await db.refresh(job)
                 if job.status == JobStatus.CANCELLED:
-                    logger.info(f"Job {job_id} was cancelled, stopping processing")
-                    log = ProcessingLog(
-                        job_id=job.id,
-                        log_level=LogLevel.INFO,
-                        message=f"Job cancelled after processing {documents_completed}/{total_documents} documents",
-                    )
-                    db.add(log)
+                    logger.info(f"Job {job_id} was cancelled, stopping")
+                    db.add(_create_log(
+                        job_id=job.id, level=LogLevel.INFO,
+                        event_type=EventType.JOB_CANCELLED,
+                        message=f"Job cancelled after {job.documents_processed}/{total_documents} documents",
+                    ))
                     await db.commit()
                     return
 
-                # Get document
+                if job.status == JobStatus.PAUSED:
+                    logger.info(f"Job {job_id} was paused, stopping")
+                    db.add(_create_log(
+                        job_id=job.id, level=LogLevel.INFO,
+                        event_type=EventType.JOB_PAUSED,
+                        message=f"Job paused after {job.documents_processed}/{total_documents} documents",
+                    ))
+                    await db.commit()
+                    return
+
+                # Load document
                 doc_result = await db.execute(
                     select(Document).where(Document.id == doc_uuid)
                 )
@@ -183,77 +245,141 @@ async def process_job_background(job_id: UUID):
                     logger.warning(f"Document {document_id} not found, skipping")
                     continue
 
-                # MVP: Extract all variables at once using text extraction service
+                # Atomic per-document extraction using savepoint
                 try:
-                    extractions = text_extraction_service.extract_all_variables(
-                        text=document.content,
-                        variables=list(variables),
-                    )
-
-                    # Save extractions to database
-                    for extraction_data in extractions:
-                        extraction = Extraction(
-                            job_id=job.id,
-                            document_id=doc_uuid,
-                            variable_id=UUID(extraction_data["variable_id"]),
-                            value=extraction_data.get("value"),
-                            confidence=extraction_data.get("confidence"),
-                            source_text=extraction_data.get("source_text"),
+                    async with db.begin_nested():
+                        # Idempotent: delete existing extractions for this job+document
+                        await db.execute(
+                            delete(Extraction).where(
+                                Extraction.job_id == job.id,
+                                Extraction.document_id == doc_uuid,
+                            )
                         )
-                        db.add(extraction)
+
+                        # Extract all variables
+                        extractions = await text_extraction_service.extract_all_variables(
+                            text=document.content,
+                            variables=list(variables),
+                            prompts=prompt_texts if prompt_texts else None,
+                        )
+
+                        # Post-process and save extractions
+                        for extraction_data in extractions:
+                            var_id = extraction_data["variable_id"]
+                            variable = variable_by_id.get(var_id)
+
+                            raw_value = extraction_data.get("value")
+                            raw_confidence = extraction_data.get("confidence", 0) or 0
+
+                            # Apply post-processing (type coercion, validation, defaults, confidence check)
+                            if variable:
+                                pp = post_process_extraction(raw_value, raw_confidence, variable)
+                                final_value = pp["value"]
+                                final_confidence = pp["confidence"]
+                                error_msg = pp.get("error_message") or extraction_data.get("error")
+
+                                if pp["should_skip"]:
+                                    ex_status = ExtractionStatus.FAILED
+                                elif pp["should_flag"]:
+                                    ex_status = ExtractionStatus.FLAGGED
+                                elif final_value is not None:
+                                    ex_status = ExtractionStatus.EXTRACTED
+                                else:
+                                    ex_status = ExtractionStatus.FAILED
+                            else:
+                                final_value = raw_value
+                                final_confidence = raw_confidence
+                                error_msg = extraction_data.get("error")
+                                ex_status = ExtractionStatus.EXTRACTED if final_value is not None else ExtractionStatus.FAILED
+
+                            extraction = Extraction(
+                                job_id=job.id,
+                                document_id=doc_uuid,
+                                variable_id=UUID(var_id),
+                                value=final_value,
+                                confidence=final_confidence,
+                                source_text=extraction_data.get("source_text"),
+                                prompt_version=prompt_versions.get(var_id),
+                                status=ex_status,
+                                error_message=error_msg,
+                            )
+                            db.add(extraction)
+
+                    # Savepoint succeeded — update counters
+                    job.documents_processed += 1
+                    job.consecutive_failures = 0
+
+                    db.add(_create_log(
+                        job_id=job.id, level=LogLevel.INFO,
+                        event_type=EventType.DOC_COMPLETED,
+                        message=f"Document processed: {document.name}",
+                        document_id=document_id,
+                        metadata={"extractions": len(extractions)},
+                    ))
 
                 except Exception as e:
-                    # Log error but continue processing
-                    log = ProcessingLog(
-                        job_id=job.id,
-                        document_id=document_id,
-                        log_level=LogLevel.ERROR,
-                        message=f"Extraction failed: {str(e)}",
-                    )
-                    db.add(log)
-                    logger.exception(f"Error extracting from document {document_id}")
+                    # Savepoint rolled back — document failed
+                    job.documents_failed += 1
+                    job.consecutive_failures += 1
 
-                # Commit extractions and logs for this document
-                await db.commit()
+                    db.add(_create_log(
+                        job_id=job.id, level=LogLevel.ERROR,
+                        event_type=EventType.DOC_FAILED,
+                        message=f"Document failed: {str(e)}",
+                        document_id=document_id,
+                    ))
+                    logger.exception(f"Error processing document {document_id}")
+
+                    # Auto-pause on too many consecutive failures
+                    if job.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        logger.warning(f"Job {job_id}: auto-pausing after {MAX_CONSECUTIVE_FAILURES} consecutive failures")
+                        job.transition_to(JobStatus.PAUSED)
+                        db.add(_create_log(
+                            job_id=job.id, level=LogLevel.WARNING,
+                            event_type=EventType.JOB_PAUSED,
+                            message=f"Auto-paused after {MAX_CONSECUTIVE_FAILURES} consecutive failures",
+                            metadata={"consecutive_failures": job.consecutive_failures},
+                        ))
+                        await db.commit()
+                        return
 
                 # Update progress
-                documents_completed += 1
-                job.progress = int((documents_completed / total_documents) * 100)
+                docs_done = job.documents_processed + job.documents_failed
+                job.progress = int((docs_done / total_documents) * 100)
                 await db.commit()
 
-                logger.info(f"Job {job_id}: {documents_completed}/{total_documents} documents complete")
+                logger.info(f"Job {job_id}: {docs_done}/{total_documents} documents done")
 
             # Mark job as complete
             job.transition_to(JobStatus.COMPLETE)
             job.progress = 100
             await db.commit()
 
-            # Log completion
-            log = ProcessingLog(
-                job_id=job.id,
-                log_level=LogLevel.INFO,
-                message=f"Job completed successfully: {documents_completed} documents processed",
-            )
-            db.add(log)
+            db.add(_create_log(
+                job_id=job.id, level=LogLevel.INFO,
+                event_type=EventType.JOB_COMPLETED,
+                message=f"Job completed: {job.documents_processed} succeeded, {job.documents_failed} failed",
+                metadata={
+                    "documents_processed": job.documents_processed,
+                    "documents_failed": job.documents_failed,
+                },
+            ))
             await db.commit()
 
             logger.info(f"Job {job_id} completed successfully")
 
         except Exception as e:
-            # Mark job as failed
             logger.exception(f"Job {job_id} failed with error: {str(e)}")
 
             try:
                 job.transition_to(JobStatus.FAILED)
                 await db.commit()
 
-                # Log failure
-                log = ProcessingLog(
-                    job_id=job.id,
-                    log_level=LogLevel.ERROR,
+                db.add(_create_log(
+                    job_id=job.id, level=LogLevel.ERROR,
+                    event_type=EventType.JOB_FAILED,
                     message=f"Job failed: {str(e)}",
-                )
-                db.add(log)
+                ))
                 await db.commit()
             except Exception:
                 logger.exception(f"Failed to update job {job_id} status to FAILED")
