@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user, get_db
 from src.models.document import Document
 from src.models.project import Project, ProjectStatus
+from src.models.user import User
 from src.models.variable import Variable
 from src.schemas.project import (
     Project as ProjectSchema,
@@ -25,21 +26,14 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 @router.post("", response_model=ProjectSchema, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project_data: ProjectCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectSchema:
-    """
-    Create a new project.
-
-    Args:
-        project_data: Project creation data
-        db: Database session
-
-    Returns:
-        Created project
-    """
-    # Create new project with CREATED status
+    """Create a new project."""
     project = Project(
+        user_id=current_user.id,
         name=project_data.name,
+        description=project_data.description,
         scale=project_data.scale,
         language=project_data.language,
         domain=project_data.domain,
@@ -59,34 +53,17 @@ async def list_projects(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
     status_filter: Optional[ProjectStatus] = Query(None, description="Filter by project status"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[ProjectSchema]:
-    """
-    List projects with pagination and optional filtering.
+    """List projects for the current user with pagination and optional filtering."""
+    query = select(Project).where(Project.user_id == current_user.id)
 
-    Args:
-        skip: Number of records to skip (offset)
-        limit: Maximum number of records to return
-        status_filter: Optional status filter
-        db: Database session
-
-    Returns:
-        List of projects
-    """
-    # Build query
-    query = select(Project)
-
-    # Apply status filter if provided
     if status_filter:
         query = query.where(Project.status == status_filter)
 
-    # Apply ordering (most recent first)
-    query = query.order_by(Project.created_at.desc())
+    query = query.order_by(Project.created_at.desc()).offset(skip).limit(limit)
 
-    # Apply pagination
-    query = query.offset(skip).limit(limit)
-
-    # Execute query
     result = await db.execute(query)
     projects = result.scalars().all()
 
@@ -96,24 +73,12 @@ async def list_projects(
 @router.get("/{project_id}", response_model=ProjectDetail)
 async def get_project(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectDetail:
-    """
-    Get project details by ID.
-
-    Args:
-        project_id: Project UUID
-        db: Database session
-
-    Returns:
-        Project details with counts
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    # Get project
+    """Get project details by ID."""
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
     )
     project = result.scalar_one_or_none()
 
@@ -123,19 +88,16 @@ async def get_project(
             detail=f"Project with id {project_id} not found"
         )
 
-    # Get variable count
     variable_count_result = await db.execute(
         select(func.count(Variable.id)).where(Variable.project_id == project_id)
     )
     variable_count = variable_count_result.scalar_one()
 
-    # Get document count
     document_count_result = await db.execute(
         select(func.count(Document.id)).where(Document.project_id == project_id)
     )
     document_count = document_count_result.scalar_one()
 
-    # Build response
     project_dict = {
         **project.__dict__,
         "variable_count": variable_count,
@@ -149,25 +111,12 @@ async def get_project(
 async def update_project(
     project_id: UUID,
     project_data: ProjectUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectSchema:
-    """
-    Update project details.
-
-    Args:
-        project_id: Project UUID
-        project_data: Project update data
-        db: Database session
-
-    Returns:
-        Updated project
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    # Get project
+    """Update project details."""
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
     )
     project = result.scalar_one_or_none()
 
@@ -177,7 +126,6 @@ async def update_project(
             detail=f"Project with id {project_id} not found"
         )
 
-    # Update fields (only if provided)
     update_data = project_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(project, field, value)
@@ -191,21 +139,12 @@ async def update_project(
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """
-    Delete a project and all related data (cascading delete).
-
-    Args:
-        project_id: Project UUID
-        db: Database session
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    # Get project
+    """Delete a project and all related data (cascading delete)."""
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
     )
     project = result.scalar_one_or_none()
 
@@ -215,7 +154,6 @@ async def delete_project(
             detail=f"Project with id {project_id} not found"
         )
 
-    # Delete project (cascade deletes related records)
     await db.delete(project)
     await db.commit()
 
@@ -223,24 +161,13 @@ async def delete_project(
 @router.post("/{project_id}/schema/approve", status_code=status.HTTP_204_NO_CONTENT)
 async def approve_schema(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """
-    Approve project schema and mark ready for processing.
-
-    This endpoint marks the schema as approved after the user has defined
-    all variables and is ready to proceed with processing.
-
-    Args:
-        project_id: Project UUID
-        db: Database session
-
-    Raises:
-        HTTPException: 404 if project not found
-        HTTPException: 400 if no variables defined
-    """
-    # Get project
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    """Approve project schema and mark ready for processing."""
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
+    )
     project = result.scalar_one_or_none()
 
     if not project:
@@ -249,7 +176,6 @@ async def approve_schema(
             detail=f"Project with id {project_id} not found",
         )
 
-    # Verify variables exist
     result = await db.execute(
         select(func.count(Variable.id)).where(Variable.project_id == project_id)
     )
@@ -261,6 +187,5 @@ async def approve_schema(
             detail="Cannot approve schema: no variables defined",
         )
 
-    # Update status
     project.status = ProjectStatus.SCHEMA_APPROVED
     await db.commit()

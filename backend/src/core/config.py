@@ -25,10 +25,22 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = Field(default=20, description="Database connection pool size")
     DATABASE_MAX_OVERFLOW: int = Field(default=10, description="Max overflow connections")
     
-    # Redis Configuration (optional for MVP)
+    # Redis Configuration
     REDIS_URL: str = Field(
         default="redis://localhost:6379/0",
-        description="Redis connection URL for job queue"
+        description="Redis connection URL for job queue and pub/sub"
+    )
+    REDIS_MAX_CONNECTIONS: int = Field(default=20, description="Max Redis connection pool size")
+
+    # ARQ Worker Configuration
+    ARQ_MAX_JOBS: int = Field(default=10, description="Max concurrent ARQ jobs")
+    ARQ_JOB_TIMEOUT: int = Field(default=3600, description="ARQ job timeout in seconds")
+    ARQ_QUEUE_NAME: str = Field(default="arq:queue", description="ARQ queue name")
+
+    # JWT Configuration
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
+        default=7,
+        description="Refresh token expiration in days"
     )
     
     # LLM Provider Configuration

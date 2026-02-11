@@ -5,12 +5,13 @@ from collections import defaultdict
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user, get_db
 from src.models.document import Document
+from src.models.user import User
 from src.models.extraction import Extraction
 from src.models.extraction_feedback import ExtractionFeedback
 from src.models.processing_job import JobStatus, ProcessingJob
@@ -33,6 +34,7 @@ from src.schemas.processing import (
     ProjectResults,
     VariableStatistics,
 )
+from src.services.feedback_analyzer import FeedbackAnalyzer
 from src.services.job_manager import JobManager
 
 router = APIRouter(tags=["processing"])
@@ -46,7 +48,7 @@ router = APIRouter(tags=["processing"])
 async def create_job(
     project_id: UUID,
     job_data: JobCreate,
-    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
@@ -55,7 +57,6 @@ async def create_job(
     Args:
         project_id: Project UUID
         job_data: Job creation data (type and document IDs)
-        background_tasks: FastAPI background tasks
         db: Database session
 
     Returns:
@@ -65,8 +66,8 @@ async def create_job(
         HTTPException: 404 if project not found
         HTTPException: 400 if no documents provided
     """
-    # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    # Verify project exists and belongs to user
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -83,7 +84,6 @@ async def create_job(
             project_id=project_id,
             job_type=job_data.job_type,
             document_ids=job_data.document_ids,
-            background_tasks=background_tasks,
         )
 
         return ProcessingJobSchema.model_validate(job)
@@ -98,6 +98,7 @@ async def create_job(
 @router.get("/api/v1/projects/{project_id}/jobs", response_model=List[ProcessingJobSchema])
 async def list_jobs(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[ProcessingJobSchema]:
     """
@@ -113,8 +114,8 @@ async def list_jobs(
     Raises:
         HTTPException: 404 if project not found
     """
-    # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    # Verify project exists and belongs to user
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -137,6 +138,7 @@ async def list_jobs(
 @router.get("/api/v1/jobs/{job_id}", response_model=JobDetail)
 async def get_job(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JobDetail:
     """
@@ -201,6 +203,7 @@ async def get_job(
 @router.delete("/api/v1/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_job(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -244,6 +247,7 @@ async def cancel_job(
 @router.post("/api/v1/jobs/{job_id}/pause", response_model=ProcessingJobSchema)
 async def pause_job(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
@@ -276,11 +280,11 @@ async def pause_job(
 @router.post("/api/v1/jobs/{job_id}/resume", response_model=ProcessingJobSchema)
 async def resume_job(
     job_id: UUID,
-    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
-    Resume a paused processing job. Re-schedules the background task.
+    Resume a paused processing job. Re-enqueues the ARQ task.
     Already-processed documents will be skipped.
     """
     result = await db.execute(
@@ -300,15 +304,15 @@ async def resume_job(
             detail=f"Can only resume PAUSED jobs, current status: {job.status.value}",
         )
 
-    # Set to PENDING so process_job_background can transition to PROCESSING
+    # Set to PENDING so the worker can transition to PROCESSING
     job.status = JobStatus.PENDING
     job.consecutive_failures = 0
     await db.commit()
     await db.refresh(job)
 
-    # Re-schedule background task
-    from src.services.job_manager import process_job_background
-    background_tasks.add_task(process_job_background, job_id=job.id)
+    # Re-enqueue ARQ job
+    job_manager = JobManager(db)
+    await job_manager._enqueue_extraction(job.id)
 
     return ProcessingJobSchema.model_validate(job)
 
@@ -317,6 +321,7 @@ async def resume_job(
 async def get_job_results(
     job_id: UUID,
     min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0, description="Minimum confidence threshold (0.0-1.0)"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JobResults:
     """
@@ -375,6 +380,7 @@ async def get_job_results(
 async def create_feedback(
     extraction_id: UUID,
     feedback_data: FeedbackCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Feedback:
     """
@@ -417,8 +423,31 @@ async def create_feedback(
     await db.commit()
     await db.refresh(feedback)
 
-    # TODO: Implement prompt refinement based on feedback
-    # Analyze feedback patterns and update prompts accordingly
+    # Check if enough feedback has accumulated to trigger refinement
+    feedback_count_result = await db.execute(
+        select(func.count(ExtractionFeedback.id))
+        .join(Extraction, ExtractionFeedback.extraction_id == Extraction.id)
+        .where(Extraction.variable_id == extraction.variable_id)
+    )
+    feedback_count = feedback_count_result.scalar_one()
+
+    if feedback_count >= 3:
+        # Enqueue refinement job via ARQ
+        try:
+            from arq.connections import create_pool
+            from src.workers.settings import parse_redis_url
+            from src.core.config import settings as app_settings
+
+            pool = await create_pool(parse_redis_url(app_settings.REDIS_URL))
+            try:
+                await pool.enqueue_job(
+                    "process_refinement_job",
+                    variable_id=str(extraction.variable_id),
+                )
+            finally:
+                await pool.close()
+        except Exception:
+            pass  # Non-critical — refinement can be triggered manually
 
     return Feedback.model_validate(feedback)
 
@@ -427,6 +456,7 @@ async def create_feedback(
 async def flag_extraction(
     extraction_id: UUID,
     flag_data: FlagUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ExtractionSchema:
     """
@@ -471,6 +501,7 @@ async def get_project_results(
     project_id: UUID,
     min_confidence: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence filter (0-100)"),
     flagged_only: bool = Query(False, description="Only return flagged results"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectResults:
     """
@@ -488,8 +519,8 @@ async def get_project_results(
     Raises:
         HTTPException: 404 if project not found
     """
-    # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    # Verify project exists and belongs to user
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -565,7 +596,7 @@ async def get_project_results(
 )
 async def start_sample_processing(
     project_id: UUID,
-    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
@@ -573,7 +604,6 @@ async def start_sample_processing(
 
     Args:
         project_id: Project UUID
-        background_tasks: FastAPI background tasks
         db: Database session
 
     Returns:
@@ -583,8 +613,8 @@ async def start_sample_processing(
         HTTPException: 404 if project not found
         HTTPException: 400 if no documents found
     """
-    # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    # Verify project exists and belongs to user
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -618,7 +648,6 @@ async def start_sample_processing(
             project_id=project_id,
             job_type=JobType.SAMPLE,
             document_ids=document_ids,
-            background_tasks=background_tasks,
         )
 
         return ProcessingJobSchema.model_validate(job)
@@ -637,7 +666,7 @@ async def start_sample_processing(
 )
 async def start_full_processing(
     project_id: UUID,
-    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
@@ -645,7 +674,6 @@ async def start_full_processing(
 
     Args:
         project_id: Project UUID
-        background_tasks: FastAPI background tasks
         db: Database session
 
     Returns:
@@ -656,7 +684,7 @@ async def start_full_processing(
         HTTPException: 400 if no documents found
     """
     # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -689,7 +717,6 @@ async def start_full_processing(
             project_id=project_id,
             job_type=JobType.FULL,
             document_ids=document_ids,
-            background_tasks=background_tasks,
         )
 
         return ProcessingJobSchema.model_validate(job)
@@ -704,6 +731,7 @@ async def start_full_processing(
 @router.get("/api/v1/extractions/{extraction_id}", response_model=ExtractionDetail)
 async def get_extraction_detail(
     extraction_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ExtractionDetail:
     """
@@ -750,6 +778,7 @@ async def get_extraction_detail(
 @router.get("/api/v1/jobs/{job_id}/statistics", response_model=JobStatistics)
 async def get_job_statistics(
     job_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JobStatistics:
     """
@@ -869,3 +898,56 @@ async def get_job_statistics(
         variable_statistics=variable_statistics,
         common_errors=common_errors
     )
+
+
+@router.post(
+    "/api/v1/variables/{variable_id}/refine",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def trigger_refinement(
+    variable_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Manually trigger prompt refinement for a variable based on accumulated feedback.
+
+    Args:
+        variable_id: Variable UUID
+        db: Database session
+
+    Returns:
+        Acknowledgement with job status
+
+    Raises:
+        HTTPException: 404 if variable not found
+    """
+    # Verify variable exists and belongs to user's project
+    result = await db.execute(
+        select(Variable)
+        .join(Project, Variable.project_id == Project.id)
+        .where(Variable.id == variable_id, Project.user_id == current_user.id)
+    )
+    variable = result.scalar_one_or_none()
+
+    if not variable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Variable with id {variable_id} not found",
+        )
+
+    # Enqueue refinement job
+    from arq.connections import create_pool
+    from src.workers.settings import parse_redis_url
+    from src.core.config import settings as app_settings
+
+    pool = await create_pool(parse_redis_url(app_settings.REDIS_URL))
+    try:
+        await pool.enqueue_job(
+            "process_refinement_job",
+            variable_id=str(variable_id),
+        )
+    finally:
+        await pool.close()
+
+    return {"status": "accepted", "message": f"Refinement job enqueued for variable {variable_id}"}

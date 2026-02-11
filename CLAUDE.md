@@ -1,6 +1,6 @@
 # coderAI Development Guidelines
 
-Last updated: 2026-02-10
+Last updated: 2026-02-11
 
 **Primary Reference**: [`CODERAI_REFERENCE.md`](/CODERAI_REFERENCE.md) is the single source of truth for architecture, data model, API design, and pipeline stages. All implementation work should align with that document.
 
@@ -26,15 +26,17 @@ Last updated: 2026-02-10
 ```text
 coderai/
 ├── backend/
-│   ├── app/
+│   ├── src/
 │   │   ├── api/routes/         # FastAPI endpoints
-│   │   ├── core/               # Config, security, exceptions
-│   │   ├── db/                 # Models, session, RLS
+│   │   ├── core/               # Config, security, database, redis
+│   │   ├── models/             # SQLAlchemy ORM models
+│   │   ├── schemas/            # Pydantic request/response schemas
 │   │   ├── services/           # Business logic
 │   │   ├── agents/             # LLM agents (co-pilot, extractor, refiner)
 │   │   ├── workers/            # ARQ background tasks
 │   │   └── main.py
 │   ├── migrations/             # Alembic
+│   ├── docker/                 # Dockerfile + docker-compose.yml
 │   └── tests/
 ├── frontend/
 │   ├── src/
@@ -52,8 +54,9 @@ coderai/
 # Backend
 cd backend && pytest                    # Run tests
 cd backend && alembic upgrade head      # Run migrations
-cd backend && uvicorn app.main:app --reload  # Dev server
-cd backend && arq app.workers.worker_settings.WorkerSettings  # Start worker
+cd backend && uvicorn src.main:app --reload  # Dev server
+cd backend && arq src.workers.settings.WorkerSettings  # Start worker
+cd backend && python run_worker.py      # Start worker (alternative)
 
 # Frontend
 cd frontend && npm test && npm run lint

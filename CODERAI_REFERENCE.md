@@ -81,67 +81,95 @@ Upload Documents → Define Variables (AI-assisted) → Sample Run → Review & 
 
 ### 2.3 Repository Structure
 
+> **Note**: The backend uses `backend/src/` (not `backend/app/`). All imports use `from src.` prefix.
+
 ```
 coderai/
 ├── backend/
-│   ├── app/
+│   ├── src/
 │   │   ├── api/                    # FastAPI routes
 │   │   │   ├── routes/
+│   │   │   │   ├── auth.py
 │   │   │   │   ├── projects.py
 │   │   │   │   ├── documents.py
 │   │   │   │   ├── variables.py
-│   │   │   │   ├── jobs.py
-│   │   │   │   └── export.py
-│   │   │   └── deps.py             # Dependencies (auth, db session, tenant)
+│   │   │   │   ├── processing.py   # Jobs + extractions + feedback
+│   │   │   │   ├── exports.py
+│   │   │   │   ├── copilot.py      # AI co-pilot endpoints
+│   │   │   │   └── websocket.py
+│   │   │   ├── dependencies.py     # Auth, DB session, RLS context
+│   │   │   └── middleware.py
 │   │   │
-│   │   ├── core/                   # Configuration, security
+│   │   ├── core/                   # Configuration, security, infra
 │   │   │   ├── config.py
-│   │   │   ├── security.py
-│   │   │   └── exceptions.py
+│   │   │   ├── database.py         # Async engine + session factory
+│   │   │   ├── security.py         # JWT + password hashing
+│   │   │   ├── redis.py
+│   │   │   ├── rls.py              # Row-Level Security policies
+│   │   │   ├── rate_limiter.py     # Redis token-bucket rate limiter
+│   │   │   ├── metrics.py          # Prometheus counters/histograms
+│   │   │   ├── job_subscriber.py
+│   │   │   ├── websocket.py
+│   │   │   └── logging.py
 │   │   │
-│   │   ├── db/                     # Database layer
-│   │   │   ├── models.py           # SQLAlchemy models
-│   │   │   ├── session.py          # Async session factory
-│   │   │   └── rls.py              # Row-level security setup
+│   │   ├── models/                 # SQLAlchemy ORM models
+│   │   │   ├── user.py
+│   │   │   ├── project.py
+│   │   │   ├── variable.py
+│   │   │   ├── prompt.py
+│   │   │   ├── document.py
+│   │   │   ├── document_chunk.py
+│   │   │   ├── processing_job.py
+│   │   │   ├── extraction.py
+│   │   │   ├── extraction_feedback.py
+│   │   │   └── processing_log.py
+│   │   │
+│   │   ├── schemas/                # Pydantic request/response schemas
 │   │   │
 │   │   ├── services/               # Business logic
 │   │   │   ├── document_processor.py
-│   │   │   ├── extraction_service.py
+│   │   │   ├── text_extraction_service.py
 │   │   │   ├── prompt_generator.py
 │   │   │   ├── feedback_analyzer.py
-│   │   │   └── export_service.py
+│   │   │   ├── export_service.py
+│   │   │   ├── post_processor.py
+│   │   │   ├── response_parser.py
+│   │   │   └── job_manager.py
 │   │   │
 │   │   ├── agents/                 # LLM agent logic
-│   │   │   ├── copilot.py          # Setup assistant
-│   │   │   ├── extractor.py        # Extraction assistants
-│   │   │   └── refiner.py          # Prompt refinement
+│   │   │   ├── copilot.py          # Setup assistant (LangChain + Redis state)
+│   │   │   ├── extractor.py        # Extraction wrapper
+│   │   │   └── refiner.py          # LLM-based prompt refinement
 │   │   │
 │   │   ├── workers/                # ARQ background tasks
-│   │   │   ├── tasks.py
-│   │   │   └── worker_settings.py
+│   │   │   ├── settings.py         # WorkerSettings + Redis config
+│   │   │   ├── extraction_worker.py
+│   │   │   ├── refinement_worker.py
+│   │   │   └── export_worker.py
 │   │   │
 │   │   └── main.py                 # FastAPI app entry
 │   │
+│   ├── docker/                     # Dockerfile + docker-compose.yml
 │   ├── migrations/                 # Alembic
-│   ├── tests/
-│   └── pyproject.toml
+│   ├── run_worker.py               # ARQ worker entry point
+│   └── requirements.txt
 │
 ├── frontend/
 │   ├── src/
+│   │   ├── app/                    # Next.js App Router
 │   │   ├── components/
-│   │   ├── pages/
-│   │   ├── hooks/
 │   │   ├── services/               # API clients
 │   │   └── types/
 │   └── package.json
 │
-├── docker-compose.yml
-└── README.md
+└── CODERAI_REFERENCE.md            # Single source of truth
 ```
 
 ---
 
 ## 3. Data Model
+
+> **Implementation notes**: The current implementation uses `backend/src/` (not `backend/app/`). Some field names and types differ from the canonical spec below. Key divergences are noted inline.
 
 ### 3.1 Core Entities
 
@@ -149,6 +177,7 @@ coderai/
 - id (UUID, PK)
 - email (unique)
 - hashed_password
+- is_active (bool, default true)
 - created_at, updated_at
 
 **Project**
@@ -158,8 +187,7 @@ coderai/
 - description
 - domain (e.g., "news articles", "legal contracts")
 - language (e.g., "Arabic", "English", "Mixed")
-- unit_of_observation (ENUM: DOCUMENT, ENTITY)
-- entity_identification_pattern (nullable, for ENTITY type)
+- unit_of_observation (JSONB) — *Implementation note: stored as JSONB `{"rows_per_document": "single"|"multiple", "entity_identification_pattern": "..."}` instead of separate ENUM + text columns*
 - status (ENUM: CREATED, SCHEMA_DEFINED, SAMPLE_COMPLETE, PROCESSING, COMPLETE)
 - created_at, updated_at
 
@@ -171,11 +199,9 @@ coderai/
 - type (ENUM: TEXT, NUMBER, DATE, CATEGORY, BOOLEAN)
 - instructions (natural language extraction instructions)
 - classification_rules (JSONB, for CATEGORY type)
-- confidence_threshold (float, default 0.7)
-- if_uncertain (ENUM: NULL, SKIP, FLAG)
-- if_multiple_values (ENUM: FIRST, LAST, ALL, SUMMARIZE)
-- max_values (int, for wide-format export, e.g., 3 → col_1, col_2, col_3)
-- default_value (nullable)
+- confidence_threshold (float, default 0.7) — *Implementation note: stored as int 0-100 in some code paths; normalize on read*
+- uncertainty_handling (JSONB) — *Implementation note: combines `if_uncertain` and related fields into a single JSONB column*
+- edge_cases (JSONB) — *Implementation note: combines `if_multiple_values`, `max_values`, `default_value` into JSONB*
 - validation_rules (JSONB: min, max, pattern, allowed_values)
 - depends_on (JSONB: conditional logic referencing other variables)
 - order (int, for display/processing sequence)
@@ -185,24 +211,22 @@ coderai/
 - id (UUID, PK)
 - variable_id (FK → Variable)
 - version (int)
-- system_prompt (text)
-- model (e.g., "gpt-4o")
-- temperature (float)
-- max_tokens (int)
-- response_schema (JSONB)
+- prompt_text (text) — *Implementation note: named `prompt_text` instead of `system_prompt`*
+- model_config_ (JSONB) — *Implementation note: stores `model`, `temperature`, `max_tokens`, `response_schema` as JSONB instead of separate columns*
 - is_active (bool)
 - created_at
 
 **Document**
 - id (UUID, PK)
 - project_id (FK → Project)
-- filename
-- content_type (MIME)
-- raw_text (extracted text)
+- name (filename)
+- content_type (ENUM: PDF, TXT, DOCX, CSV, JSON, PARQUET, HTML)
+- content (extracted text) — *Implementation note: column named `content` instead of `raw_text`*
 - chunk_count (int, if chunked)
 - word_count (int)
 - status (ENUM: UPLOADED, PARSED, READY, FAILED)
 - error_message (nullable)
+- file_size (int, bytes)
 - created_at
 
 **DocumentChunk** (for large documents)
@@ -217,7 +241,7 @@ coderai/
 - id (UUID, PK)
 - project_id (FK → Project)
 - type (ENUM: SAMPLE, FULL)
-- status (ENUM: PENDING, RUNNING, PAUSED, COMPLETED, FAILED)
+- status (ENUM: PENDING, PROCESSING, PAUSED, COMPLETE, FAILED, CANCELLED) — *Implementation note: uses PROCESSING/COMPLETE/CANCELLED instead of RUNNING/COMPLETED*
 - document_ids (UUID[], documents to process)
 - progress (int, 0-100)
 - documents_processed (int)
@@ -233,8 +257,8 @@ coderai/
 - variable_id (FK → Variable)
 - entity_index (int, nullable, for entity-level extraction)
 - entity_text (text, nullable, the identified entity)
-- value (JSONB, supports multi-value)
-- confidence (float, 0.0-1.0)
+- value (text) — *Implementation note: stored as text, not JSONB*
+- confidence (int, 0-100) — *Implementation note: integer 0-100 scale, not float 0.0-1.0*
 - source_text (text, excerpt used for extraction)
 - prompt_version (int)
 - status (ENUM: EXTRACTED, VALIDATED, FLAGGED, FAILED)
@@ -245,7 +269,7 @@ coderai/
 - id (UUID, PK)
 - extraction_id (FK → Extraction)
 - feedback_type (ENUM: CORRECT, INCORRECT, PARTIALLY_CORRECT)
-- corrected_value (JSONB, nullable)
+- corrected_value (text, nullable) — *Implementation note: stored as text, not JSONB*
 - user_note (text, nullable)
 - created_at
 
@@ -253,9 +277,10 @@ coderai/
 - id (UUID, PK)
 - job_id (FK → ProcessingJob)
 - document_id (FK → Document, nullable)
-- event_type (ENUM: JOB_STARTED, DOC_STARTED, DOC_COMPLETED, DOC_FAILED, JOB_COMPLETED, etc.)
+- log_level (ENUM: DEBUG, INFO, WARNING, ERROR)
+- event_type (ENUM: JOB_STARTED, DOC_STARTED, DOC_COMPLETED, DOC_FAILED, JOB_COMPLETED, JOB_FAILED, JOB_PAUSED, JOB_RESUMED, JOB_CANCELLED)
 - message (text)
-- metadata (JSONB)
+- metadata_ (JSONB) — *Implementation note: column named `metadata_` to avoid SQLAlchemy reserved name*
 - created_at
 
 ### 3.2 Row-Level Security
@@ -550,6 +575,16 @@ Optional: Re-run sample with new prompt
 **Co-pilot**
 - `POST /projects/{id}/copilot/message` - Send message to co-pilot
 - `POST /copilot/suggest-variables` - Get variable suggestions
+- `POST /copilot/refine` - Generate LLM refinement alternatives for a variable
+- `POST /copilot/refine/apply` - Apply selected refinement as new prompt version
+
+**Variables (additional)**
+- `POST /variables/{id}/refine` - Manually trigger prompt refinement from feedback
+
+**Health & Observability**
+- `GET /health/live` - Liveness probe (always 200)
+- `GET /health/ready` - Readiness probe (checks DB + Redis)
+- `GET /metrics` - Prometheus metrics endpoint
 
 ### 7.2 Real-time Updates
 
@@ -748,32 +783,34 @@ services:
 ## 13. Development Phases
 
 ### Phase 1: Foundation (MVP)
-- [ ] Project CRUD
-- [ ] Document upload + parsing (PDF, TXT)
-- [ ] Variable definition (manual)
-- [ ] Basic extraction pipeline (sequential)
-- [ ] Export to CSV
-- [ ] Single-user (no auth)
+- [x] Project CRUD
+- [x] Document upload + parsing (PDF, TXT)
+- [x] Variable definition (manual)
+- [x] Basic extraction pipeline (sequential)
+- [x] Export to CSV
+- [x] Single-user (no auth)
 
 ### Phase 2: Core Features
-- [ ] Authentication + multi-tenancy
-- [ ] Entity-level extraction
-- [ ] Sample → Feedback → Full run workflow
-- [ ] Job queue with ARQ
-- [ ] Real-time progress (WebSocket)
-- [ ] Excel export with codebook
+- [x] Authentication + multi-tenancy (JWT + RLS)
+- [x] Entity-level extraction
+- [x] Sample → Feedback → Full run workflow
+- [x] Job queue with ARQ
+- [x] Real-time progress (WebSocket)
+- [x] Excel export with codebook
 
 ### Phase 3: AI Co-pilot
-- [ ] Variable suggestion
-- [ ] Prompt refinement from feedback
-- [ ] Guided setup wizard
+- [x] Variable suggestion
+- [x] Prompt refinement from feedback (LLM-based)
+- [ ] Guided setup wizard (partial — API support exists, no frontend wizard)
 
 ### Phase 4: Scale & Polish
-- [ ] Document chunking for large files
-- [ ] Parallel processing
-- [ ] Observability (metrics, tracing)
-- [ ] Rate limiting + cost controls
-- [ ] DOCX, HTML format support
+- [x] Document chunking for large files
+- [x] Parallel processing (asyncio.gather with semaphore)
+- [x] Observability (Prometheus metrics)
+- [x] Rate limiting + cost controls (Redis token-bucket)
+- [x] DOCX, HTML format support
+- [x] Circuit breaker for LLM resilience
+- [x] Health check endpoints (/health/live, /health/ready)
 
 ### Phase 5: Advanced (v2)
 - [ ] Duplicate detection
@@ -855,5 +892,5 @@ DEFAULT_TOKEN_BUDGET_PER_PROJECT=1000000
 
 ---
 
-*Document version: 1.0*
-*Last updated: February 2026*
+*Document version: 1.1*
+*Last updated: February 11, 2026*

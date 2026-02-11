@@ -11,8 +11,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user, get_db
 from src.models.project import Project
+from src.models.user import User
 from src.schemas.export import ExportConfig, ExportFormat, ExportResponse
 from src.services.export_service import ExportService
 
@@ -27,6 +28,7 @@ router = APIRouter(tags=["exports"])
 async def create_export(
     project_id: UUID,
     export_config: ExportConfig,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ExportResponse:
     """
@@ -48,7 +50,7 @@ async def create_export(
         HTTPException: 400 if no extractions found
     """
     # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -97,6 +99,17 @@ async def create_export(
                 min_confidence=export_config.min_confidence,
             )
             extension = "json"
+
+        elif export_config.format == ExportFormat.CODEBOOK:
+            import pandas as pd
+            from io import BytesIO
+
+            df_codebook = await export_service.generate_codebook(project_id)
+            buf = BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                df_codebook.to_excel(writer, sheet_name="Codebook", index=False)
+            file_content = buf.getvalue()
+            extension = "xlsx"
 
         else:
             raise HTTPException(

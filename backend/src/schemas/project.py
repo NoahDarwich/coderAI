@@ -37,6 +37,7 @@ class UnitOfObservation(BaseModel):
 class ProjectCreate(BaseModel):
     """Schema for creating a new project."""
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
+    description: Optional[str] = Field(None, description="Project description")
     scale: ProjectScale = Field(..., description="Project scale (SMALL or LARGE)")
     language: str = Field(default="en", max_length=50, description="Source document language (ISO 639-1)")
     domain: Optional[str] = Field(None, max_length=255, description="Domain context (e.g., 'political science')")
@@ -49,6 +50,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     """Schema for updating a project."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Project name")
+    description: Optional[str] = Field(None, description="Project description")
     domain: Optional[str] = Field(None, max_length=255, description="Domain context")
     unit_of_observation: Optional[UnitOfObservation] = Field(
         None,
@@ -59,7 +61,9 @@ class ProjectUpdate(BaseModel):
 class Project(BaseModel):
     """Schema for project response."""
     id: UUID
+    user_id: Optional[UUID] = None
     name: str
+    description: Optional[str] = None
     scale: ProjectScale
     language: str
     domain: Optional[str]

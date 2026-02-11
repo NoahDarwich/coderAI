@@ -1,6 +1,6 @@
 # Backend Implementation Status
 
-**Last Updated**: 2026-02-10
+**Last Updated**: 2026-02-11
 **Branch**: `master`
 **Source of Truth**: [CODERAI_REFERENCE.md](/CODERAI_REFERENCE.md)
 
@@ -8,69 +8,74 @@
 
 ## Current State
 
-The backend has existing code under `backend/src/` that was built before the current architecture was defined in CODERAI_REFERENCE.md. This code needs to be **restructured and realigned**.
+The backend under `backend/src/` implements Phases 1-4 of the development roadmap. All core pipeline stages are functional: ingestion, extraction (document-level and entity-level), post-processing, storage, and export.
 
-### What Exists (under backend/src/)
+### What's Implemented
 
 | Layer | Files | Status |
 |-------|-------|--------|
-| **Models** | 9 SQLAlchemy models | Need expansion: User + DocumentChunk missing; Variable, Document, Extraction need new fields |
-| **Schemas** | 7 Pydantic modules | Need updates for new fields |
-| **Routes** | 5 route modules | Need restructuring for new directory layout |
-| **Services** | 7 services | Need refactoring: LangChain-only LLM, pipeline stages, post-processing |
-| **Core** | config, database, logging | Need auth, security, exceptions, RLS |
-| **Workers** | Empty `__init__.py` | Need ARQ worker implementation |
-| **Agents** | Does not exist | Need co-pilot, extractor, refiner modules |
+| **Models** | 10 SQLAlchemy models (User, Project, Variable, Prompt, Document, DocumentChunk, ProcessingJob, Extraction, ExtractionFeedback, ProcessingLog) | Complete |
+| **Schemas** | 8 Pydantic modules (project, variable, document, processing, feedback, export, auth) | Complete |
+| **Routes** | 8 route modules (auth, projects, documents, variables, processing, exports, copilot, websocket) | Complete |
+| **Services** | 8 services (document_processor, text_extraction_service, prompt_generator, feedback_analyzer, export_service, post_processor, response_parser, job_manager) | Complete |
+| **Core** | config, database, security, redis, rls, rate_limiter, metrics, job_subscriber, websocket | Complete |
+| **Workers** | 3 ARQ workers (extraction, refinement, export) + settings | Complete |
+| **Agents** | 3 agents (copilot, extractor, refiner) using LangChain | Complete |
 
-### Key Gaps vs. CODERAI_REFERENCE.md
+### Key Features
 
-1. **Directory structure**: Currently `backend/src/` → needs `backend/app/`
-2. **No User model or auth**: JWT auth and multi-tenancy not implemented
-3. **No DocumentChunk model**: Large document chunking not supported
-4. **No ARQ workers**: Using FastAPI BackgroundTasks instead of ARQ + Redis
-5. **No Row-Level Security**: No multi-tenancy isolation
-6. **No WebSocket**: No real-time job progress
-7. **No agents directory**: Co-pilot, extractor, refiner not implemented
-8. **Wrong LLM client**: Job manager uses OpenAI SDK directly instead of LangChain
-9. **No post-processing stage**: LLM output goes straight to DB without validation
-10. **No entity-level extraction**: Only document-level supported
-11. **No circuit breaker**: Basic retry only
-12. **Variable model incomplete**: Missing display_name, if_uncertain, if_multiple_values, max_values, default_value, depends_on
-13. **Extraction model incomplete**: Missing entity_index, entity_text, prompt_version, status enum
+- **Auth**: JWT access/refresh tokens, bcrypt password hashing
+- **Multi-tenancy**: Row-Level Security policies on all tenant-scoped tables, context set per request
+- **Entity extraction**: LLM-based entity identification + per-entity-per-variable extraction
+- **Document chunking**: Auto-chunk documents > 5000 words, merge results by best confidence
+- **Parallel extraction**: `asyncio.gather` with semaphore for concurrent LLM calls
+- **Post-processing**: Type coercion, validation, defaults, confidence check, multi-value handling
+- **Circuit breaker**: Open after 5 failures, half-open after 30s, close after 3 successes
+- **Rate limiting**: Redis token-bucket per project
+- **Prometheus metrics**: Counters (docs, extractions, LLM calls, jobs) + histograms (duration, confidence)
+- **AI co-pilot**: LangChain-based setup assistant with Redis conversation state
+- **LLM prompt refinement**: Generates 2-3 alternatives from feedback patterns, user selects
+- **Export**: CSV, Excel (with codebook sheet), standalone codebook
+- **Health checks**: `/health/live` (liveness), `/health/ready` (DB + Redis)
+- **Docker**: Dockerfile + docker-compose with API, worker, PostgreSQL, Redis services
 
 ---
 
-## Development Phases (from CODERAI_REFERENCE.md Section 13)
+## Development Phases
 
-### Phase 1: Foundation (MVP)
-- [ ] Project CRUD
-- [ ] Document upload + parsing (PDF, TXT)
-- [ ] Variable definition (manual)
-- [ ] Basic extraction pipeline (sequential)
-- [ ] Export to CSV
-- [ ] Single-user (no auth)
+### Phase 1: Foundation (MVP) — Complete
+- [x] Project CRUD
+- [x] Document upload + parsing (PDF, TXT, DOCX, CSV, JSON, Parquet)
+- [x] Variable definition (manual)
+- [x] Basic extraction pipeline (sequential)
+- [x] Export to CSV
+- [x] Post-processing (type coercion, validation, defaults)
 
-### Phase 2: Core Features
-- [ ] Authentication + multi-tenancy (JWT + RLS)
-- [ ] Entity-level extraction
-- [ ] Sample → Feedback → Full run workflow
-- [ ] Job queue with ARQ + Redis
-- [ ] Real-time progress (WebSocket)
-- [ ] Excel export with codebook
+### Phase 2: Core Features — Complete
+- [x] Authentication + multi-tenancy (JWT + RLS)
+- [x] Entity-level extraction (identify entities, extract per entity x variable)
+- [x] Sample → Feedback → Full run workflow
+- [x] Job queue with ARQ + Redis
+- [x] Real-time progress (WebSocket + Redis pub/sub)
+- [x] Excel export with codebook
 
-### Phase 3: AI Co-pilot
-- [ ] Variable suggestion
-- [ ] Prompt refinement from feedback
-- [ ] Guided setup wizard
+### Phase 3: AI Co-pilot — Complete
+- [x] Variable suggestion (from domain + sample docs)
+- [x] Prompt refinement from feedback (LLM-based, 2-3 alternatives)
+- [x] Co-pilot chat endpoint with Redis conversation state
+- [ ] Guided setup wizard (API support exists, frontend wizard not yet built)
 
-### Phase 4: Scale & Polish
-- [ ] Document chunking for large files
-- [ ] Parallel processing
-- [ ] Observability (metrics, tracing)
-- [ ] Rate limiting + cost controls
-- [ ] DOCX, HTML format support
+### Phase 4: Scale & Polish — Complete
+- [x] Document chunking for large files (> 5000 words)
+- [x] Parallel processing (asyncio.gather with semaphore)
+- [x] Observability (Prometheus metrics endpoint)
+- [x] Rate limiting (Redis token-bucket per project)
+- [x] DOCX + HTML format support
+- [x] Circuit breaker for LLM calls
+- [x] Health check endpoints
+- [x] Docker (Dockerfile + docker-compose with worker service)
 
-### Phase 5: Advanced (v2)
+### Phase 5: Advanced (v2) — Not started
 - [ ] Duplicate detection
 - [ ] External API enrichment
 - [ ] Multi-model support
@@ -78,11 +83,25 @@ The backend has existing code under `backend/src/` that was built before the cur
 
 ---
 
-## Next Steps
+## Known Divergences from CODERAI_REFERENCE.md
 
-1. **Restructure directory**: Move `backend/src/` → `backend/app/`
-2. **Update models**: Add User, DocumentChunk; expand Variable, Document, Extraction
-3. **Implement ARQ**: Replace BackgroundTasks with ARQ + Redis workers
-4. **Add auth**: JWT auth middleware + RLS setup
-5. **Fix LLM pipeline**: Wire through LangChain, add post-processing stage
-6. **Add agents**: Create co-pilot, extractor, refiner modules
+See Section 3.1 of CODERAI_REFERENCE.md for detailed notes. Key differences:
+
+1. **Package path**: Uses `backend/src/` (not `backend/app/`). All imports use `from src.` prefix.
+2. **Confidence scale**: Integer 0-100 (not float 0.0-1.0).
+3. **Variable fields**: `uncertainty_handling` and `edge_cases` stored as JSONB (not separate columns).
+4. **Prompt fields**: `prompt_text` + `model_config_` JSONB (not separate `system_prompt`, `model`, `temperature` columns).
+5. **Job status enums**: PROCESSING/COMPLETE/CANCELLED (not RUNNING/COMPLETED).
+6. **Extraction value**: Stored as text (not JSONB).
+7. **LLM client**: `text_extraction_service.py` uses OpenAI SDK directly with circuit breaker; agents use LangChain.
+
+---
+
+## Remaining Work
+
+1. **Frontend**: Not yet started (React + Next.js 15)
+2. **Alembic migrations**: Need to generate migrations for latest model changes
+3. **Tests**: Minimal test coverage — need unit + integration tests
+4. **OpenTelemetry tracing**: Not yet implemented (Prometheus metrics are in place)
+5. **Guided wizard API**: Backend support exists but not structured as wizard flow
+6. **Phase 5 features**: Duplicate detection, external APIs, multi-model, team collaboration

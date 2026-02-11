@@ -50,5 +50,22 @@ services:
       - ../src:/app/src
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/data_extraction
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../src:/app/src
+    command: python run_worker.py
+
 volumes:
   postgres_data:

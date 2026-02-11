@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user, get_db
 from src.models.project import Project, ProjectStatus
+from src.models.user import User
 from src.models.prompt import Prompt
 from src.models.variable import Variable
 from src.schemas.variable import (
@@ -27,6 +28,7 @@ router = APIRouter(tags=["variables"])
 @router.get("/api/v1/projects/{project_id}/variables", response_model=List[VariableSchema])
 async def list_variables(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[VariableSchema]:
     """
@@ -42,9 +44,9 @@ async def list_variables(
     Raises:
         HTTPException: 404 if project not found
     """
-    # Verify project exists
+    # Verify project exists and belongs to user
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
     )
     project = result.scalar_one_or_none()
 
@@ -69,6 +71,7 @@ async def list_variables(
 async def create_variable(
     project_id: UUID,
     variable_data: VariableCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VariableSchema:
     """
@@ -86,9 +89,9 @@ async def create_variable(
         HTTPException: 404 if project not found
         HTTPException: 409 if variable order already exists
     """
-    # Verify project exists
+    # Verify project exists and belongs to user
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id, Project.user_id == current_user.id)
     )
     project = result.scalar_one_or_none()
 
@@ -151,6 +154,7 @@ async def create_variable(
 @router.get("/api/v1/variables/{variable_id}", response_model=VariableDetail)
 async def get_variable(
     variable_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VariableDetail:
     """
@@ -205,6 +209,7 @@ async def get_variable(
 async def update_variable(
     variable_id: UUID,
     variable_data: VariableUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VariableSchema:
     """
@@ -300,6 +305,7 @@ async def update_variable(
 @router.delete("/api/v1/variables/{variable_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_variable(
     variable_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """

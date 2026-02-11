@@ -150,40 +150,117 @@ def parse_txt(file: BinaryIO) -> str:
         raise DocumentProcessingError(f"Failed to parse text file: {str(e)}")
 
 
-def chunk_text(text: str, max_words: int = 5000) -> list[str]:
+def parse_html(file: BinaryIO) -> str:
     """
-    Split text into chunks for processing large documents.
+    Parse HTML file and extract text content using BeautifulSoup.
+
+    Args:
+        file: Binary file object (HTML)
+
+    Returns:
+        Extracted text content
+
+    Raises:
+        DocumentProcessingError: If HTML parsing fails
+    """
+    try:
+        from bs4 import BeautifulSoup
+
+        content = file.read()
+
+        # Try UTF-8 first, then latin-1
+        try:
+            html_text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            html_text = content.decode("latin-1")
+
+        soup = BeautifulSoup(html_text, "html.parser")
+
+        # Remove script and style elements
+        for element in soup(["script", "style", "head"]):
+            element.decompose()
+
+        # Get text with newline separation
+        text = soup.get_text(separator="\n", strip=True)
+
+        if not text:
+            raise DocumentProcessingError("HTML contains no extractable text")
+
+        return text
+
+    except DocumentProcessingError:
+        raise
+    except Exception as e:
+        raise DocumentProcessingError(f"Failed to parse HTML: {str(e)}")
+
+
+def chunk_text(text: str, max_words: int = 3000, overlap_words: int = 300) -> list[dict]:
+    """
+    Split text into overlapping chunks for processing large documents.
 
     Args:
         text: Full document text
-        max_words: Maximum words per chunk (default: 5000 words ~= 7000 tokens)
+        max_words: Maximum words per chunk (default: 3000 words ~= 4000 tokens)
+        overlap_words: Number of overlap words between chunks
 
     Returns:
-        List of text chunks
+        List of dicts with keys: text, token_count, overlap_tokens
     """
     words = text.split()
 
     if len(words) <= max_words:
-        return [text]
+        return [{"text": text, "token_count": len(words), "overlap_tokens": 0}]
 
     chunks = []
-    current_chunk = []
-    current_count = 0
+    start = 0
 
-    for word in words:
-        current_chunk.append(word)
-        current_count += 1
-
-        if current_count >= max_words:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-            current_count = 0
-
-    # Add remaining words
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
+    while start < len(words):
+        end = min(start + max_words, len(words))
+        chunk_words = words[start:end]
+        overlap = overlap_words if start > 0 else 0
+        chunks.append({
+            "text": " ".join(chunk_words),
+            "token_count": len(chunk_words),
+            "overlap_tokens": overlap,
+        })
+        start = end - overlap_words if end < len(words) else end
 
     return chunks
+
+
+async def create_chunks_for_document(db, document, min_word_count: int = 5000) -> int:
+    """
+    Create document chunks in the database if the document is large enough.
+
+    Args:
+        db: AsyncSession
+        document: Document model instance
+        min_word_count: Minimum word count to trigger chunking
+
+    Returns:
+        Number of chunks created (0 if not chunked)
+    """
+    from src.models.document_chunk import DocumentChunk
+
+    if not document.content or (document.word_count or 0) <= min_word_count:
+        return 0
+
+    chunks_data = chunk_text(document.content)
+    if len(chunks_data) <= 1:
+        return 0
+
+    for i, chunk_data in enumerate(chunks_data):
+        chunk = DocumentChunk(
+            document_id=document.id,
+            chunk_index=i,
+            text=chunk_data["text"],
+            token_count=chunk_data["token_count"],
+            overlap_tokens=chunk_data["overlap_tokens"],
+        )
+        db.add(chunk)
+
+    document.chunk_count = len(chunks_data)
+    return len(chunks_data)
 
 
 def get_content_preview(text: str, max_length: int = 500) -> str:

@@ -13,6 +13,7 @@ class ExportFormat(str, Enum):
     CSV_LONG = "CSV_LONG"
     EXCEL = "EXCEL"
     JSON = "JSON"
+    CODEBOOK = "CODEBOOK"
 
 
 class ExportConfig(BaseModel):

@@ -16,9 +16,10 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user, get_db
 from src.models.document import ContentType, Document, DocumentStatus
 from src.models.project import Project
+from src.models.user import User
 from src.schemas.document import (
     Document as DocumentSchema,
     DocumentDetail,
@@ -26,8 +27,10 @@ from src.schemas.document import (
 )
 from src.services.document_processor import (
     DocumentProcessingError,
+    create_chunks_for_document,
     get_content_preview,
     parse_docx,
+    parse_html,
     parse_pdf,
     parse_txt,
 )
@@ -43,6 +46,7 @@ router = APIRouter(tags=["documents"])
 async def upload_document(
     project_id: UUID,
     file: UploadFile = File(..., description="Document file (PDF, DOCX, or TXT)"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentSchema:
     """
@@ -62,7 +66,7 @@ async def upload_document(
         HTTPException: 413 if file too large
     """
     # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -100,10 +104,13 @@ async def upload_document(
     elif file_ext == "txt":
         content_type = ContentType.TXT
         parser = parse_txt
+    elif file_ext in ["html", "htm"]:
+        content_type = ContentType.HTML
+        parser = parse_html
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {file_ext}. Supported: PDF, DOCX, TXT",
+            detail=f"Unsupported file type: {file_ext}. Supported: PDF, DOCX, TXT, HTML",
         )
 
     # Parse document and extract text
@@ -146,6 +153,13 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
 
+    # Create chunks for large documents
+    if word_count > 5000:
+        chunk_count = await create_chunks_for_document(db, document)
+        if chunk_count > 0:
+            await db.commit()
+            await db.refresh(document)
+
     return DocumentSchema.model_validate(document)
 
 
@@ -157,6 +171,7 @@ async def upload_document(
 async def create_text_document(
     project_id: UUID,
     document_data: TextDocumentCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentSchema:
     """
@@ -175,7 +190,7 @@ async def create_text_document(
         HTTPException: 400 if text is empty or too large
     """
     # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -220,12 +235,20 @@ async def create_text_document(
     await db.commit()
     await db.refresh(document)
 
+    # Create chunks for large documents
+    if word_count > 5000:
+        chunk_count = await create_chunks_for_document(db, document)
+        if chunk_count > 0:
+            await db.commit()
+            await db.refresh(document)
+
     return DocumentSchema.model_validate(document)
 
 
 @router.get("/api/v1/projects/{project_id}/documents", response_model=List[DocumentSchema])
 async def list_documents(
     project_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[DocumentSchema]:
     """
@@ -242,7 +265,7 @@ async def list_documents(
         HTTPException: 404 if project not found
     """
     # Verify project exists
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -265,6 +288,7 @@ async def list_documents(
 @router.get("/api/v1/documents/{document_id}", response_model=DocumentDetail)
 async def get_document(
     document_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentDetail:
     """
@@ -280,9 +304,11 @@ async def get_document(
     Raises:
         HTTPException: 404 if document not found
     """
-    # Get document
+    # Get document with ownership check via project
     result = await db.execute(
-        select(Document).where(Document.id == document_id)
+        select(Document)
+        .join(Project, Document.project_id == Project.id)
+        .where(Document.id == document_id, Project.user_id == current_user.id)
     )
     document = result.scalar_one_or_none()
 
@@ -302,6 +328,7 @@ async def get_document(
 @router.delete("/api/v1/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -314,9 +341,11 @@ async def delete_document(
     Raises:
         HTTPException: 404 if document not found
     """
-    # Get document
+    # Get document with ownership check via project
     result = await db.execute(
-        select(Document).where(Document.id == document_id)
+        select(Document)
+        .join(Project, Document.project_id == Project.id)
+        .where(Document.id == document_id, Project.user_id == current_user.id)
     )
     document = result.scalar_one_or_none()
 

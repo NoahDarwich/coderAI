@@ -17,6 +17,7 @@ class ContentType(str, enum.Enum):
     PDF = "PDF"
     DOCX = "DOCX"
     TXT = "TXT"
+    HTML = "HTML"
 
 
 class DocumentStatus(str, enum.Enum):
@@ -43,11 +44,13 @@ class Document(Base):
     size_bytes = Column(Integer, nullable=False)
     status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADED)
     word_count = Column(Integer, nullable=True)
+    chunk_count = Column(Integer, nullable=True, default=0)
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
     project = relationship("Project", back_populates="documents")
+    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan", order_by="DocumentChunk.chunk_index")
     extractions = relationship("Extraction", back_populates="document", cascade="all, delete-orphan")
     processing_logs = relationship("ProcessingLog", back_populates="document", cascade="all, delete-orphan")
 

@@ -9,11 +9,11 @@ from uuid import UUID
 
 import pandas as pd
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.document import Document
-from src.models.extraction import Extraction
+from src.models.extraction import Extraction, ExtractionStatus
 from src.models.project import Project
 from src.models.variable import Variable
 
@@ -118,6 +118,11 @@ class ExportService:
                 "value": value,
             }
 
+            # Include entity info if present
+            if extraction.entity_index is not None:
+                row["entity_index"] = extraction.entity_index
+                row["entity_text"] = extraction.entity_text or ""
+
             if include_confidence:
                 row["confidence"] = extraction.confidence
 
@@ -161,8 +166,11 @@ class ExportService:
         )
 
         # Pivot to wide format
+        # Determine index columns based on whether entity data is present
+        has_entities = "entity_index" in df.columns and df["entity_index"].notna().any()
         index_cols = ["document_id", "document_name"]
-        value_cols = ["value"]
+        if has_entities:
+            index_cols.extend(["entity_index", "entity_text"])
 
         if include_confidence:
             # Create separate columns for value and confidence
@@ -293,17 +301,98 @@ class ExportService:
                 values="value"
             ).reset_index()
 
-        # Create Excel file with two sheets
+        # Generate codebook
+        try:
+            df_codebook = await self.generate_codebook(project_id)
+        except ValueError:
+            df_codebook = pd.DataFrame()
+
+        # Create Excel file with three sheets
         excel_buffer = BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_wide.to_excel(writer, sheet_name='Wide Format', index=False)
             df_long.to_excel(writer, sheet_name='Long Format', index=False)
+            if not df_codebook.empty:
+                df_codebook.to_excel(writer, sheet_name='Codebook', index=False)
 
         excel_bytes = excel_buffer.getvalue()
 
-        logger.info(f"Generated Excel with {len(df_wide)} wide rows and {len(df_long)} long rows")
+        logger.info(f"Generated Excel with {len(df_wide)} wide rows, {len(df_long)} long rows, codebook")
 
         return excel_bytes
+
+    async def generate_codebook(
+        self,
+        project_id: UUID,
+    ) -> pd.DataFrame:
+        """
+        Generate a codebook with variable definitions and quality metrics.
+
+        Includes: variable name, type, instructions, classification rules,
+        avg confidence, % flagged, % null, total extractions.
+
+        Args:
+            project_id: Project UUID
+
+        Returns:
+            DataFrame with codebook data
+        """
+        # Get variables
+        result = await self.db.execute(
+            select(Variable)
+            .where(Variable.project_id == project_id)
+            .order_by(Variable.order)
+        )
+        variables = result.scalars().all()
+
+        if not variables:
+            raise ValueError(f"No variables defined for project {project_id}")
+
+        codebook_rows = []
+        for variable in variables:
+            # Get extraction stats for this variable
+            result = await self.db.execute(
+                select(
+                    func.count(Extraction.id).label("total"),
+                    func.avg(Extraction.confidence).label("avg_confidence"),
+                    func.count(Extraction.id).filter(
+                        Extraction.status == ExtractionStatus.FLAGGED
+                    ).label("flagged_count"),
+                    func.count(Extraction.id).filter(
+                        Extraction.value.is_(None)
+                    ).label("null_count"),
+                )
+                .where(Extraction.variable_id == variable.id)
+            )
+            stats = result.first()
+
+            total = stats.total or 0
+            avg_conf = round(float(stats.avg_confidence), 1) if stats.avg_confidence else None
+            pct_flagged = round((stats.flagged_count / total) * 100, 1) if total > 0 else 0.0
+            pct_null = round((stats.null_count / total) * 100, 1) if total > 0 else 0.0
+
+            # Format classification rules
+            rules_str = ""
+            if variable.classification_rules:
+                categories = variable.classification_rules.get("categories", [])
+                if categories:
+                    rules_str = "; ".join(categories)
+
+            codebook_rows.append({
+                "variable_name": variable.name,
+                "display_name": variable.display_name or variable.name,
+                "type": variable.type.value,
+                "instructions": variable.instructions,
+                "classification_rules": rules_str,
+                "total_extractions": total,
+                "avg_confidence": avg_conf,
+                "pct_flagged": pct_flagged,
+                "pct_null": pct_null,
+            })
+
+        df = pd.DataFrame(codebook_rows)
+        logger.info(f"Generated codebook with {len(df)} variables for project {project_id}")
+        return df
 
     async def generate_json(
         self,

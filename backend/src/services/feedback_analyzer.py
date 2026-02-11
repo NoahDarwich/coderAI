@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.extraction import Extraction
-from src.models.extraction_feedback import ExtractionFeedback
+from src.models.extraction_feedback import ExtractionFeedback, FeedbackType
 from src.models.prompt import Prompt
 from src.models.variable import Variable
 
@@ -87,7 +87,7 @@ class FeedbackAnalyzer:
         incorrect_extractions = []
         
         for feedback, extraction in feedback_rows:
-            if not feedback.is_correct:
+            if feedback.feedback_type != FeedbackType.CORRECT:
                 error_count += 1
                 incorrect_extractions.append({
                     'extraction': extraction,
@@ -197,7 +197,7 @@ class FeedbackAnalyzer:
         keyword_counts = defaultdict(int)
         
         for feedback, extraction in feedback_rows:
-            if not feedback.is_correct and feedback.user_comment:
+            if feedback.feedback_type != FeedbackType.CORRECT and feedback.user_comment:
                 comment_lower = feedback.user_comment.lower()
                 for keyword in issue_keywords:
                     if keyword in comment_lower:
