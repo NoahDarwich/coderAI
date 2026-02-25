@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { GripVertical, Edit, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { GripVertical, Edit, Copy, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,6 +20,7 @@ interface SchemaTableProps {
   variables: Variable[];
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
+  onDuplicate?: (index: number) => void;
   onReorder?: (startIndex: number, endIndex: number) => void;
 }
 
@@ -39,7 +40,7 @@ const TYPE_LABELS = {
   boolean: 'Yes/No',
 };
 
-export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTableProps) {
+export function SchemaTable({ variables, onEdit, onDelete, onDuplicate, onReorder }: SchemaTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -192,6 +193,16 @@ export function SchemaTable({ variables, onEdit, onDelete, onReorder }: SchemaTa
                     >
                       <Edit className="w-4 h-4" aria-hidden="true" />
                     </Button>
+                    {onDuplicate && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDuplicate(index)}
+                        aria-label={`Duplicate ${variable.name}`}
+                      >
+                        <Copy className="w-4 h-4" aria-hidden="true" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

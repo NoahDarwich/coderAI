@@ -29,7 +29,7 @@ interface SchemaReviewProps {
 }
 
 export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaReviewProps) {
-  const { variables, deleteVariable, reorderVariables, clearDraft } = useSchemaWizardStore();
+  const { variables, deleteVariable, duplicateVariable, reorderVariables, clearDraft } = useSchemaWizardStore();
   const saveSchema = useSaveSchema(projectId);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [variableToDelete, setVariableToDelete] = useState<number | null>(null);
@@ -39,6 +39,13 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
   const handleEdit = () => {
     // Navigate back to wizard at the specific variable
     onBackToWizard();
+  };
+
+  const handleDuplicate = (index: number) => {
+    duplicateVariable(index);
+    toast.success('Variable duplicated', {
+      description: `"${variables[index]?.name}_copy" added at the bottom. You can edit or reorder it.`,
+    });
   };
 
   const handleDeleteClick = (index: number) => {
@@ -145,6 +152,7 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
             variables={variables}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
+            onDuplicate={handleDuplicate}
             onReorder={reorderVariables}
           />
         </CardContent>

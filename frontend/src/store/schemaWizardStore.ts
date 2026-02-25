@@ -13,6 +13,7 @@ interface SchemaWizardState {
   addVariable: (variable: Omit<Variable, 'id' | 'order'>) => void;
   updateVariable: (index: number, variable: Partial<Variable>) => void;
   deleteVariable: (index: number) => void;
+  duplicateVariable: (index: number) => void;
   reorderVariables: (startIndex: number, endIndex: number) => void;
   setCurrentIndex: (index: number) => void;
   saveDraft: () => void;
@@ -56,6 +57,18 @@ export const useSchemaWizardStore = create<SchemaWizardState>()(
           .map((v, i) => ({ ...v, order: i })),
         isDraft: true,
       })),
+
+      duplicateVariable: (index) => set((state) => {
+        const source = state.variables[index];
+        if (!source) return state;
+        const copy: Variable = {
+          ...source,
+          id: `var-temp-${Math.random().toString(36).substring(2, 9)}`,
+          name: `${source.name}_copy`,
+          order: state.variables.length,
+        };
+        return { variables: [...state.variables, copy], isDraft: true };
+      }),
 
       reorderVariables: (startIndex, endIndex) => set((state) => {
         const result = Array.from(state.variables);
