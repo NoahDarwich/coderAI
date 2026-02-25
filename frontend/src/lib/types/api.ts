@@ -15,6 +15,16 @@ export interface User {
 }
 
 /**
+ * Unit of Observation — what each row in the exported dataset represents.
+ * Stored as JSONB on the backend; this is the canonical frontend shape.
+ */
+export interface UnitOfObservation {
+  whatEachRowRepresents: string;
+  rowsPerDocument: 'one' | 'multiple';
+  entityIdentificationPattern?: string;
+}
+
+/**
  * Project Model
  */
 export interface Project {

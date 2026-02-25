@@ -5,7 +5,7 @@
  * and frontend → backend request transformations.
  */
 
-import type { Project, Document, Variable, ProcessingJob, ExtractionResult, ExtractionDataPoint } from '@/lib/types/api';
+import type { Project, Document, Variable, ProcessingJob, ExtractionResult, ExtractionDataPoint, UnitOfObservation } from '@/lib/types/api';
 
 // ─── Backend Response Types (snake_case) ────────────────────────────────
 
@@ -121,10 +121,20 @@ export interface BackendProjectCreate {
   domain?: string;
 }
 
+export interface BackendUnitOfObservation {
+  what_each_row_represents: string;
+  rows_per_document: 'one' | 'multiple';
+  entity_identification_pattern?: string | null;
+}
+
 export interface BackendProjectUpdate {
   name?: string;
   domain?: string;
+  unit_of_observation?: BackendUnitOfObservation;
 }
+
+// UnitOfObservation is defined in @/lib/types/api and re-exported here for convenience
+export type { UnitOfObservation } from '@/lib/types/api';
 
 export interface BackendVariableCreate {
   name: string;
@@ -215,7 +225,7 @@ export function transformVariable(bv: BackendVariable): Variable {
   return result;
 }
 
-const JOB_STATUS_MAP: Record<BackendProcessingJob['status'], ProcessingJob['status']> = {
+export const JOB_STATUS_MAP: Record<BackendProcessingJob['status'], ProcessingJob['status']> = {
   'PENDING': 'pending',
   'PROCESSING': 'processing',
   'PAUSED': 'paused',
@@ -280,7 +290,30 @@ export function toBackendProjectUpdate(data: Partial<Project>): BackendProjectUp
   const update: BackendProjectUpdate = {};
   if (data.name !== undefined) update.name = data.name;
   if (data.description !== undefined) update.domain = data.description;
+  if (data.unitOfObservation !== undefined) {
+    const uoo = data.unitOfObservation as UnitOfObservation;
+    update.unit_of_observation = {
+      what_each_row_represents: uoo.whatEachRowRepresents,
+      rows_per_document: uoo.rowsPerDocument,
+      entity_identification_pattern: uoo.entityIdentificationPattern ?? null,
+    };
+  }
   return update;
+}
+
+/** Convert a backend UnitOfObservation payload to the frontend UnitOfObservation type */
+export function transformUnitOfObservation(
+  raw: Record<string, unknown> | null | undefined,
+): UnitOfObservation | undefined {
+  if (!raw) return undefined;
+  return {
+    whatEachRowRepresents: (raw.what_each_row_represents as string) || '',
+    rowsPerDocument: (raw.rows_per_document as 'one' | 'multiple') || 'one',
+    entityIdentificationPattern:
+      typeof raw.entity_identification_pattern === 'string'
+        ? raw.entity_identification_pattern
+        : undefined,
+  };
 }
 
 export function toBackendVariableCreate(

@@ -1,5 +1,5 @@
 /**
- * Results Page - Step 5: View and export extraction results
+ * Results Page - Step 6: View and export extraction results
  */
 
 'use client';
@@ -124,7 +124,7 @@ export default function ResultsPage() {
           </div>
         </div>
 
-        <WorkflowProgress currentStep={5} />
+        <WorkflowProgress currentStep={6} />
       </div>
 
       {/* Error Alert */}

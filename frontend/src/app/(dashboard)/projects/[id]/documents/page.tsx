@@ -182,11 +182,7 @@ export default function DocumentsPage() {
   };
 
   const handleContinue = () => {
-    // Update project status to schema phase
-    updateProject(projectId, {
-      status: 'schema',
-    });
-    router.push(`/projects/${projectId}/schema`);
+    router.push(`/projects/${projectId}/unit-of-observation`);
   };
 
   if (!mounted) {
@@ -304,7 +300,7 @@ export default function DocumentsPage() {
         {hasDocuments && (
           <div className="flex justify-end">
             <Button size="lg" onClick={handleContinue}>
-              Continue to Schema Definition
+              Continue to Unit of Observation
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>

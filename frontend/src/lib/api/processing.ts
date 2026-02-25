@@ -3,7 +3,9 @@
  * TanStack Query hooks for job processing operations
  */
 
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
 import {
   BackendProcessingJob,
@@ -11,7 +13,10 @@ import {
   BackendProjectResults,
   BackendProcessingLog,
   transformJob,
+  JOB_STATUS_MAP,
 } from './transforms';
+
+const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/^http/, 'ws');
 
 /**
  * Frontend Types (for UI compatibility)
@@ -182,9 +187,8 @@ const realProcessingApi = {
  */
 const processingApi = apiClient.useMockData ? mockProcessingApi : realProcessingApi;
 
-/**
- * Query Keys
- */
+// ─── Query Keys ──────────────────────────────────────────────────────────────
+
 export const processingKeys = {
   all: ['processing'] as const,
   jobs: () => [...processingKeys.all, 'jobs'] as const,
@@ -192,6 +196,111 @@ export const processingKeys = {
   results: (jobId: string) => [...processingKeys.all, 'results', jobId] as const,
   projectResults: (projectId: string) => [...processingKeys.all, 'project-results', projectId] as const,
 };
+
+const TERMINAL_STATUSES: ProcessingJob['status'][] = ['completed', 'failed', 'cancelled'];
+
+// ─── WebSocket helpers ───────────────────────────────────────────────────────
+
+function handleWsEvent(
+  msg: Record<string, unknown>,
+  jobId: string,
+  queryClient: QueryClient,
+): void {
+  if (msg.type === 'ping') return;
+
+  const key = processingKeys.job(jobId);
+  const now = new Date().toISOString();
+  const current = queryClient.getQueryData<ProcessingJob>(key);
+  if (!current) return;
+
+  let logEntry: ProcessingLog | null = null;
+  let patch: Partial<ProcessingJob> = {};
+
+  switch (msg.type) {
+    case 'initial_state': {
+      queryClient.setQueryData<ProcessingJob>(key, {
+        ...current,
+        status: JOB_STATUS_MAP[msg.status as BackendProcessingJob['status']] ?? 'pending',
+        progress: (msg.progress as number) ?? current.progress,
+        processedDocuments: (msg.documents_processed as number) ?? current.processedDocuments,
+        totalDocuments: (msg.total_documents as number) ?? current.totalDocuments,
+      });
+      return;
+    }
+    case 'progress': {
+      patch = {
+        progress: msg.progress as number,
+        processedDocuments: msg.documents_processed as number,
+        totalDocuments: (msg.total_documents as number) ?? current.totalDocuments,
+      };
+      break;
+    }
+    case 'document_completed': {
+      logEntry = {
+        timestamp: now,
+        level: 'info',
+        message: `Processed: ${(msg.document_name as string) || (msg.document_id as string)}`,
+        documentId: typeof msg.document_id === 'string' ? msg.document_id : undefined,
+      };
+      patch = {
+        processedDocuments: (msg.documents_processed as number) ?? (current.processedDocuments + 1),
+        totalDocuments: (msg.total_documents as number) ?? current.totalDocuments,
+      };
+      break;
+    }
+    case 'document_failed': {
+      logEntry = {
+        timestamp: now,
+        level: 'error',
+        message: `Failed: ${(msg.error as string) || 'Unknown error'}`,
+        documentId: typeof msg.document_id === 'string' ? msg.document_id : undefined,
+      };
+      break;
+    }
+    case 'job_completed': {
+      logEntry = {
+        timestamp: now,
+        level: 'info',
+        message: `Job complete — ${msg.documents_processed} processed, ${msg.documents_failed ?? 0} failed`,
+      };
+      patch = {
+        status: 'completed',
+        progress: 100,
+        processedDocuments: msg.documents_processed as number,
+      };
+      break;
+    }
+    case 'job_failed': {
+      logEntry = {
+        timestamp: now,
+        level: 'error',
+        message: `Job failed: ${(msg.error as string) || 'Unknown error'}`,
+      };
+      patch = { status: 'failed' };
+      break;
+    }
+    case 'job_paused': {
+      const reason = msg.reason === 'consecutive_failures'
+        ? 'Too many consecutive failures'
+        : 'System shutdown';
+      logEntry = {
+        timestamp: now,
+        level: 'warning',
+        message: `Job paused: ${reason}`,
+      };
+      patch = { status: 'paused' };
+      break;
+    }
+    default:
+      return;
+  }
+
+  queryClient.setQueryData<ProcessingJob>(key, {
+    ...current,
+    ...patch,
+    logs: logEntry ? [...current.logs, logEntry] : current.logs,
+  });
+}
 
 /**
  * Create processing job mutation
@@ -215,9 +324,49 @@ export function useCreateJob(projectId: string) {
 }
 
 /**
- * Poll job status with automatic refetch
+ * Subscribe to real-time job status via WebSocket, falling back to 2s polling
+ * if the WebSocket connection cannot be established or drops.
+ *
+ * Logs are synthesized from WebSocket events so the ProcessingLog panel
+ * receives live entries without a separate HTTP poll.
  */
 export function useJobStatus(jobId: string | null, enabled: boolean = true) {
+  const queryClient = useQueryClient();
+  // Ref (not state) avoids stale-closure issues in the refetchInterval callback
+  const wsConnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (!jobId || !enabled || apiClient.useMockData) return;
+
+    const ws = new WebSocket(`${WS_BASE}/ws/jobs/${jobId}`);
+
+    ws.onopen = () => { wsConnectedRef.current = true; };
+
+    ws.onmessage = (event) => {
+      try {
+        handleWsEvent(JSON.parse(event.data as string), jobId, queryClient);
+      } catch {
+        // ignore malformed frames
+      }
+    };
+
+    ws.onclose = () => {
+      wsConnectedRef.current = false;
+      // Resume polling if the job hasn't finished yet
+      const cached = queryClient.getQueryData<ProcessingJob>(processingKeys.job(jobId));
+      if (!cached || !TERMINAL_STATUSES.includes(cached.status)) {
+        queryClient.invalidateQueries({ queryKey: processingKeys.job(jobId) });
+      }
+    };
+
+    return () => {
+      // Null out the handler before closing so that the cleanup-triggered
+      // onclose does not call setWsConnected on an unmounted component
+      ws.onclose = null;
+      ws.close();
+    };
+  }, [jobId, enabled, queryClient]);
+
   return useQuery({
     queryKey: processingKeys.job(jobId || 'none'),
     queryFn: () => {
@@ -225,16 +374,13 @@ export function useJobStatus(jobId: string | null, enabled: boolean = true) {
       return processingApi.getJobStatus(jobId);
     },
     enabled: enabled && !!jobId,
+    // The ref is read inside the callback so it always sees the current value,
+    // even if the query closure was created before the WS connected.
     refetchInterval: (query) => {
+      if (wsConnectedRef.current) return false;
       const data = query.state.data;
       if (!data) return false;
-
-      if (data.status === 'completed' ||
-          data.status === 'failed' ||
-          data.status === 'cancelled') {
-        return false;
-      }
-
+      if (TERMINAL_STATUSES.includes(data.status)) return false;
       return 2000;
     },
     refetchIntervalInBackground: true,

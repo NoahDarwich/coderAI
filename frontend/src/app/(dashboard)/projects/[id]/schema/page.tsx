@@ -1,12 +1,12 @@
 /**
- * Schema Definition Page - Step 2: Define extraction variables through wizard
+ * Schema Definition Page - Step 3: Define extraction variables through wizard
  */
 
 'use client';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SchemaWizard } from '@/components/workflow/step2/SchemaWizard';
+import { SchemaWizard } from '@/components/workflow/step3/SchemaWizard';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { useProjectStore } from '@/store/projectStore';
 
@@ -55,7 +55,7 @@ export default function SchemaPage() {
           </Button>
         </div>
 
-        <WorkflowProgress currentStep={2} />
+        <WorkflowProgress currentStep={3} />
       </div>
 
       <SchemaWizard projectId={projectId} onComplete={handleComplete} />

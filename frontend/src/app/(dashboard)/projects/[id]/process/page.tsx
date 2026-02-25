@@ -1,5 +1,5 @@
 /**
- * Processing Page - Step 4: Process documents with extraction
+ * Processing Page - Step 5: Process documents with extraction
  */
 
 'use client';
@@ -86,7 +86,7 @@ export default function ProcessPage() {
           </div>
         </div>
 
-        <WorkflowProgress currentStep={4} />
+        <WorkflowProgress currentStep={5} />
       </div>
 
       {isLoading ? (

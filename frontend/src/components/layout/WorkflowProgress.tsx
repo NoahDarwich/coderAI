@@ -10,11 +10,12 @@ interface WorkflowStep {
 }
 
 const WORKFLOW_STEPS: WorkflowStep[] = [
-  { number: 1, label: 'Setup', description: 'Create project & upload documents' },
-  { number: 2, label: 'Define', description: 'Define extraction variables' },
-  { number: 3, label: 'Review', description: 'Review & finalize schema' },
-  { number: 4, label: 'Process', description: 'Extract data from documents' },
-  { number: 5, label: 'Export', description: 'Review results & export' },
+  { number: 1, label: 'Upload', description: 'Upload documents' },
+  { number: 2, label: 'Unit', description: 'Define unit of observation' },
+  { number: 3, label: 'Schema', description: 'Define extraction variables' },
+  { number: 4, label: 'Review', description: 'Review & finalize schema' },
+  { number: 5, label: 'Process', description: 'Extract data' },
+  { number: 6, label: 'Export', description: 'Review results & export' },
 ];
 
 interface WorkflowProgressProps {
