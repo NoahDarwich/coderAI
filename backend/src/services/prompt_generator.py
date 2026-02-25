@@ -22,22 +22,23 @@ def generate_prompt(variable: Variable, project: Optional[Project] = None) -> Di
     Returns:
         Dictionary with 'prompt_text' and 'model_config' keys
     """
-    # Get project context
+    # Get project context and UoO framing
     project_context = _build_project_context(project) if project else ""
+    uoo_framing, input_label = _build_uoo_framing(project)
 
     # Generate prompt based on variable type
     if variable.type == VariableType.TEXT:
-        prompt_text = _generate_text_prompt(variable, project_context)
+        prompt_text = _generate_text_prompt(variable, project_context, uoo_framing, input_label)
     elif variable.type == VariableType.CATEGORY:
-        prompt_text = _generate_category_prompt(variable, project_context)
+        prompt_text = _generate_category_prompt(variable, project_context, uoo_framing, input_label)
     elif variable.type == VariableType.NUMBER:
-        prompt_text = _generate_number_prompt(variable, project_context)
+        prompt_text = _generate_number_prompt(variable, project_context, uoo_framing, input_label)
     elif variable.type == VariableType.DATE:
-        prompt_text = _generate_date_prompt(variable, project_context)
+        prompt_text = _generate_date_prompt(variable, project_context, uoo_framing, input_label)
     elif variable.type == VariableType.BOOLEAN:
-        prompt_text = _generate_boolean_prompt(variable, project_context)
+        prompt_text = _generate_boolean_prompt(variable, project_context, uoo_framing, input_label)
     elif variable.type == VariableType.LOCATION:
-        prompt_text = _generate_location_prompt(variable, project_context)
+        prompt_text = _generate_location_prompt(variable, project_context, uoo_framing, input_label)
     else:
         raise ValueError(f"Unknown variable type: {variable.type}")
 
@@ -87,6 +88,37 @@ def _build_project_context(project: Project) -> str:
             context_parts.append(f"Extraction Mode: One row per document (document-level extraction)")
 
     return "\n".join(context_parts)
+
+
+def _build_uoo_framing(project: Optional[Project]) -> tuple:
+    """
+    Build extraction scope framing based on unit of observation mode.
+
+    Returns:
+        (framing_section, input_label) where framing_section is injected into
+        the prompt body and input_label replaces "Document" at the bottom.
+        For document-level extraction both are empty/default.
+    """
+    if not project or not project.unit_of_observation:
+        return "", "Document"
+
+    uoo = project.unit_of_observation
+    if uoo.get("rows_per_document", "one") != "multiple":
+        return "", "Document"
+
+    what_represents = uoo.get("what_each_row_represents", "entity")
+    entity_pattern = uoo.get("entity_identification_pattern", "")
+
+    lines = [
+        "\n**Extraction Scope — Entity-Level Mode:**",
+        f"The text below is a passage representing a single {what_represents}.",
+        "Extract values for this specific entity only.",
+        "Do not aggregate or summarise across multiple entities in the same document.",
+    ]
+    if entity_pattern:
+        lines.append(f"Entity identification pattern: {entity_pattern}")
+
+    return "\n".join(lines), "Entity Passage"
 
 
 def _build_uncertainty_handling(variable: Variable) -> str:
@@ -203,7 +235,7 @@ def _build_golden_examples(variable: Variable) -> str:
     return "\n".join(lines)
 
 
-def _generate_text_prompt(variable: Variable, project_context: str) -> str:
+def _generate_text_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for TEXT variable type.
 
@@ -213,9 +245,10 @@ def _generate_text_prompt(variable: Variable, project_context: str) -> str:
     edge_case_instructions = _build_edge_case_handling(variable)
     golden_examples_section = _build_golden_examples(variable)
 
-    prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided document.
+    prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Extraction Task:**
 Variable Name: {variable.name}
@@ -243,13 +276,13 @@ You must respond with a valid JSON object in this exact format:
 5. source_text: Include the surrounding context (max 200 characters)
 6. Be precise and faithful to the source document
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
 
 
-def _generate_category_prompt(variable: Variable, project_context: str) -> str:
+def _generate_category_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for CATEGORY variable type.
 
@@ -272,9 +305,10 @@ def _generate_category_prompt(variable: Variable, project_context: str) -> str:
     selection_type = "one or more categories" if allow_multiple else "exactly one category"
     other_option = "\n- You may respond with a category not in the list if 'allow_other' is true and none fit well" if allow_other else ""
 
-    prompt = f"""You are a precise classification assistant. Categorize the following information from the provided document.
+    prompt = f"""You are a precise classification assistant. Categorize the following information from the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Classification Task:**
 Variable Name: {variable.name}
@@ -308,13 +342,13 @@ You must respond with a valid JSON object in this exact format:
 3. Be conservative - only classify if you have clear evidence
 4. For ambiguous cases, reduce confidence score rather than forcing a category
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
 
 
-def _generate_number_prompt(variable: Variable, project_context: str) -> str:
+def _generate_number_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for NUMBER variable type.
 
@@ -324,9 +358,10 @@ def _generate_number_prompt(variable: Variable, project_context: str) -> str:
     edge_case_instructions = _build_edge_case_handling(variable)
     golden_examples_section = _build_golden_examples(variable)
 
-    prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided document.
+    prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Extraction Task:**
 Variable Name: {variable.name}
@@ -355,13 +390,13 @@ You must respond with a valid JSON object in this exact format:
 6. source_text: Include the exact phrase containing the number (max 200 characters)
 7. Be precise - do not estimate or calculate unless explicitly instructed
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
 
 
-def _generate_date_prompt(variable: Variable, project_context: str) -> str:
+def _generate_date_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for DATE variable type.
 
@@ -371,9 +406,10 @@ def _generate_date_prompt(variable: Variable, project_context: str) -> str:
     edge_case_instructions = _build_edge_case_handling(variable)
     golden_examples_section = _build_golden_examples(variable)
 
-    prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided document.
+    prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Extraction Task:**
 Variable Name: {variable.name}
@@ -404,13 +440,13 @@ You must respond with a valid JSON object in this exact format:
 8. source_text: Include the exact phrase containing the date (max 200 characters)
 9. Be careful with ambiguous formats (e.g., "03/04/2024" could be Mar 4 or Apr 3)
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
 
 
-def _generate_boolean_prompt(variable: Variable, project_context: str) -> str:
+def _generate_boolean_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for BOOLEAN variable type.
 
@@ -420,9 +456,10 @@ def _generate_boolean_prompt(variable: Variable, project_context: str) -> str:
     edge_case_instructions = _build_edge_case_handling(variable)
     golden_examples_section = _build_golden_examples(variable)
 
-    prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided document.
+    prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Assessment Task:**
 Variable Name: {variable.name}
@@ -452,13 +489,13 @@ You must respond with a valid JSON object in this exact format:
 7. Be conservative - only return true/false if you have clear evidence
 8. Do not assume or infer beyond what the document explicitly states
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
 
 
-def _generate_location_prompt(variable: Variable, project_context: str) -> str:
+def _generate_location_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for LOCATION variable type.
 
@@ -468,9 +505,10 @@ def _generate_location_prompt(variable: Variable, project_context: str) -> str:
     edge_case_instructions = _build_edge_case_handling(variable)
     golden_examples_section = _build_golden_examples(variable)
 
-    prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided document.
+    prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided {input_label.lower()}.
 
 {project_context}
+{uoo_framing}
 
 **Extraction Task:**
 Variable Name: {variable.name}
@@ -506,7 +544,7 @@ You must respond with a valid JSON object in this exact format:
 7. Be precise - only extract locations, not general directional terms (e.g., "north", "south")
 8. Preserve original language/script if the document uses non-Latin characters
 
-**Document:**
+**{input_label}:**
 {{document_text}}
 """
     return prompt.strip()
