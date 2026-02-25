@@ -198,6 +198,14 @@ async def get_job(
     job_dict["documents_completed"] = documents_completed
     job_dict["documents_total"] = len(job.document_ids)
 
+    # Compute ETA from persisted rolling average
+    if job.avg_seconds_per_doc is not None and job.status.value == "PROCESSING":
+        docs_done = (job.documents_processed or 0) + (job.documents_failed or 0)
+        docs_remaining = len(job.document_ids) - docs_done
+        job_dict["eta_seconds"] = int(job.avg_seconds_per_doc * docs_remaining) if docs_remaining > 0 else 0
+    else:
+        job_dict["eta_seconds"] = None
+
     return JobDetail.model_validate(job_dict)
 
 

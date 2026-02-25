@@ -38,6 +38,13 @@ async def job_progress_ws(websocket: WebSocket, job_id: str):
     await manager.connect(job_id, websocket)
 
     try:
+        # Compute ETA for initial state
+        eta_seconds = None
+        if job.avg_seconds_per_doc is not None and job.status.value == "PROCESSING":
+            docs_done = (job.documents_processed or 0) + (job.documents_failed or 0)
+            docs_remaining = len(job.document_ids) - docs_done
+            eta_seconds = int(job.avg_seconds_per_doc * docs_remaining) if docs_remaining > 0 else 0
+
         # Send initial state
         await websocket.send_json({
             "type": "initial_state",
@@ -47,6 +54,7 @@ async def job_progress_ws(websocket: WebSocket, job_id: str):
             "documents_processed": job.documents_processed,
             "documents_failed": job.documents_failed,
             "total_documents": len(job.document_ids),
+            "eta_seconds": eta_seconds,
         })
 
         # Keep-alive loop — also receives client messages (ping/pong)

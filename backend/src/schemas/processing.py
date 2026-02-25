@@ -34,6 +34,7 @@ class ProcessingJob(BaseModel):
     documents_processed: int = Field(default=0, description="Number of documents successfully processed")
     documents_failed: int = Field(default=0, description="Number of documents that failed processing")
     consecutive_failures: int = Field(default=0, description="Current consecutive failure count")
+    eta_seconds: Optional[int] = Field(None, description="Estimated seconds remaining (null when not yet available)")
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
 

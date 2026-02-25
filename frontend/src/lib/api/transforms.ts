@@ -59,6 +59,7 @@ export interface BackendProcessingJob {
   document_ids: string[];
   documents_processed?: number;
   documents_failed?: number;
+  eta_seconds?: number | null;
   started_at?: string;
   completed_at?: string;
   created_at: string;
@@ -246,6 +247,7 @@ export function transformJob(bj: BackendProcessingJob): ProcessingJob {
     progress: bj.progress,
     totalDocuments,
     processedDocuments,
+    etaSeconds: bj.eta_seconds ?? null,
     startedAt: bj.started_at || bj.created_at,
     completedAt: bj.completed_at,
   };

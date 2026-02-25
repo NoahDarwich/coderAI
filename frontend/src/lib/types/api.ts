@@ -144,6 +144,7 @@ export interface ProcessingJob {
   processedDocuments: number;
   currentDocument?: string;
   estimatedTimeRemaining?: number;
+  etaSeconds?: number | null;
   startedAt?: string;
   completedAt?: string;
   errorMessage?: string;

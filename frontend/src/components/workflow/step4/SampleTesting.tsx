@@ -204,6 +204,12 @@ export function SampleTesting({
     setSampleSizeRaw(String(clamped));
   };
 
+  const formatEta = (eta: number | null | undefined): string => {
+    if (eta == null || eta <= 0) return '';
+    if (eta < 60) return `~${Math.round(eta)}s remaining`;
+    return `~${Math.round(eta / 60)}m remaining`;
+  };
+
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 85) return 'text-green-600';
     if (confidence >= 70) return 'text-yellow-600';
@@ -349,6 +355,9 @@ export function SampleTesting({
                 <span className="font-medium">{job.progress}%</span>
               </div>
               <Progress value={job.progress} className="h-2" />
+              {formatEta(job.etaSeconds) && (
+                <p className="text-xs text-muted-foreground">{formatEta(job.etaSeconds)}</p>
+              )}
             </div>
 
             {job.logs && job.logs.length > 0 && (

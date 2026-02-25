@@ -5,7 +5,7 @@ import enum
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -45,6 +45,7 @@ class ProcessingJob(Base):
     documents_processed = Column(Integer, nullable=False, default=0)
     documents_failed = Column(Integer, nullable=False, default=0)
     consecutive_failures = Column(Integer, nullable=False, default=0)
+    avg_seconds_per_doc = Column(Float, nullable=True, comment="Rolling average seconds per document (used for ETA)")
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 

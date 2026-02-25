@@ -6,6 +6,7 @@ Supports parallel document processing with configurable concurrency.
 """
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from src.models.processing_log import EventType, LogLevel, ProcessingLog
 from src.models.project import Project
 from src.models.prompt import Prompt
 from src.models.variable import Variable
+from src.core.config import settings
 from src.services.post_processor import post_process_extraction
 from src.services.text_extraction_service import create_extraction_service
 
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_FAILURES = 10
 MAX_PARALLEL_DOCUMENTS = 5  # Concurrent documents per job
+CHECKPOINT_INTERVAL = settings.WORKER_CHECKPOINT_INTERVAL
 
 
 def _create_log(
@@ -171,6 +174,22 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                 if doc_uuid in processed_doc_ids:
                     continue
 
+                # Check for graceful shutdown signal
+                if ctx.get("shutdown_requested"):
+                    logger.info(f"Job {job_id}: shutdown requested, pausing at document boundary")
+                    job.transition_to(JobStatus.PAUSED)
+                    db.add(_create_log(
+                        job_id=job.id, level=LogLevel.INFO,
+                        event_type=EventType.JOB_PAUSED,
+                        message=f"Paused for system shutdown after {job.documents_processed}/{total_documents} documents",
+                        metadata={"reason": "system_shutdown"},
+                    ))
+                    await db.commit()
+                    await _publish_progress(ctx, job.id, "job_paused", {
+                        "reason": "system_shutdown",
+                    })
+                    return {"status": "paused", "reason": "system_shutdown"}
+
                 # Check if job was cancelled or paused
                 await db.refresh(job)
                 if job.status == JobStatus.CANCELLED:
@@ -202,6 +221,9 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                 if not document:
                     logger.warning(f"Document {document_id} not found, skipping")
                     continue
+
+                # Start per-document timer for ETA tracking
+                doc_start = time.monotonic()
 
                 # Atomic per-document extraction using savepoint
                 try:
@@ -410,16 +432,34 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                         })
                         return {"status": "paused", "reason": "consecutive_failures"}
 
-                # Update progress
+                # Update progress and ETA
                 docs_done = job.documents_processed + job.documents_failed
                 job.progress = int((docs_done / total_documents) * 100)
+
+                # Rolling EMA of seconds per document (alpha=0.3 for smoothness)
+                doc_elapsed = time.monotonic() - doc_start
+                if job.avg_seconds_per_doc is None:
+                    job.avg_seconds_per_doc = doc_elapsed
+                else:
+                    job.avg_seconds_per_doc = 0.7 * job.avg_seconds_per_doc + 0.3 * doc_elapsed
+
+                docs_remaining = total_documents - docs_done
+                eta_seconds = int(job.avg_seconds_per_doc * docs_remaining) if docs_remaining > 0 else 0
+
                 await db.commit()
+
+                # Periodic checkpoint log
+                if docs_done % CHECKPOINT_INTERVAL == 0:
+                    logger.info(
+                        f"Job {job_id}: checkpoint at {docs_done}/{total_documents} documents"
+                    )
 
                 await _publish_progress(ctx, job.id, "progress", {
                     "progress": job.progress,
                     "documents_processed": job.documents_processed,
                     "documents_failed": job.documents_failed,
                     "total_documents": total_documents,
+                    "eta_seconds": eta_seconds,
                 })
 
             # Mark job as complete

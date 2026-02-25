@@ -30,6 +30,7 @@ export interface ProcessingJob {
   documentIds: string[];
   totalDocuments: number;
   processedDocuments: number;
+  etaSeconds?: number | null;
   startedAt: string;
   completedAt?: string;
   logs: ProcessingLog[];
@@ -224,6 +225,7 @@ function handleWsEvent(
         progress: (msg.progress as number) ?? current.progress,
         processedDocuments: (msg.documents_processed as number) ?? current.processedDocuments,
         totalDocuments: (msg.total_documents as number) ?? current.totalDocuments,
+        etaSeconds: (msg.eta_seconds as number | null) ?? null,
       });
       return;
     }
@@ -232,6 +234,7 @@ function handleWsEvent(
         progress: msg.progress as number,
         processedDocuments: msg.documents_processed as number,
         totalDocuments: (msg.total_documents as number) ?? current.totalDocuments,
+        etaSeconds: (msg.eta_seconds as number | null) ?? null,
       };
       break;
     }
