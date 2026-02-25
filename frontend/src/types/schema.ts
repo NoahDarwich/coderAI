@@ -21,4 +21,5 @@ export type VariableType =
   | 'number'
   | 'date'
   | 'category'
-  | 'boolean';
+  | 'boolean'
+  | 'location';

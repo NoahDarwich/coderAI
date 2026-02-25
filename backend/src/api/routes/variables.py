@@ -136,7 +136,7 @@ async def create_variable(
     prompt = Prompt(
         variable_id=variable.id,
         prompt_text=prompt_data["prompt_text"],
-        model_config=prompt_data["model_config"],
+        model_config_=prompt_data["model_config"],
         version=1,
     )
 
@@ -198,7 +198,7 @@ async def get_variable(
         variable_dict["current_prompt"] = PromptInfo(
             version=current_prompt.version,
             prompt_text=current_prompt.prompt_text,
-            llm_config=current_prompt.model_config,
+            llm_config=current_prompt.model_config_,
         )
     else:
         variable_dict["current_prompt"] = None
@@ -291,7 +291,7 @@ async def update_variable(
         new_prompt = Prompt(
             variable_id=variable.id,
             prompt_text=prompt_data["prompt_text"],
-            model_config=prompt_data["model_config"],
+            model_config_=prompt_data["model_config"],
             version=current_version + 1,
         )
 
@@ -401,10 +401,6 @@ async def add_golden_example(
         current_version = current_version_result.scalar_one_or_none() or 0
 
         # Deactivate current prompt
-        await db.execute(
-            select(Prompt)
-            .where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
-        )
         active_prompts = await db.execute(
             select(Prompt).where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
         )
@@ -415,7 +411,7 @@ async def add_golden_example(
         new_prompt = Prompt(
             variable_id=variable.id,
             prompt_text=prompt_data["prompt_text"],
-            model_config=prompt_data["model_config"],
+            model_config_=prompt_data["model_config"],
             version=current_version + 1,
             is_active=True,
         )

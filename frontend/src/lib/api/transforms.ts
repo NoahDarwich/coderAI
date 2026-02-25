@@ -82,7 +82,7 @@ export interface BackendDocumentResult {
 export interface BackendProjectResults {
   project_id: string;
   total_documents: number;
-  documents: BackendDocumentResult[];
+  results: BackendDocumentResult[];
 }
 
 export interface BackendExtraction {

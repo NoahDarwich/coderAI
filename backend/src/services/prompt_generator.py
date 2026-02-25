@@ -71,26 +71,22 @@ def _build_project_context(project: Project) -> str:
 
     context_parts.append(f"Project Scale: {project.scale.value}")
 
-    # Add unit of observation context
+    # Add unit of observation context for document-level extraction only.
+    # Entity-level projects get a dedicated framing section from _build_uoo_framing
+    # to avoid rendering the same information twice in the prompt.
     if project.unit_of_observation:
         uoo = project.unit_of_observation
-        what_represents = uoo.get("what_each_row_represents", "document")
         rows_per_doc = uoo.get("rows_per_document", "one")
-
-        context_parts.append(f"\n**Unit of Observation:**")
-        context_parts.append(f"Each row in the output dataset represents: {what_represents}")
-
-        if rows_per_doc == "multiple":
-            context_parts.append(f"Extraction Mode: Multiple rows per document (entity-level extraction)")
-            if "entity_identification_pattern" in uoo:
-                context_parts.append(f"Entity Pattern: {uoo['entity_identification_pattern']}")
-        else:
+        if rows_per_doc != "multiple":
+            what_represents = uoo.get("what_each_row_represents", "document")
+            context_parts.append(f"\n**Unit of Observation:**")
+            context_parts.append(f"Each row in the output dataset represents: {what_represents}")
             context_parts.append(f"Extraction Mode: One row per document (document-level extraction)")
 
     return "\n".join(context_parts)
 
 
-def _build_uoo_framing(project: Optional[Project]) -> tuple:
+def _build_uoo_framing(project: Optional[Project]) -> tuple[str, str]:
     """
     Build extraction scope framing based on unit of observation mode.
 
@@ -235,15 +231,22 @@ def _build_golden_examples(variable: Variable) -> str:
     return "\n".join(lines)
 
 
+def _build_common_sections(variable: Variable) -> tuple[str, str, str]:
+    """Return (uncertainty_instructions, edge_case_instructions, golden_examples_section)."""
+    return (
+        _build_uncertainty_handling(variable),
+        _build_edge_case_handling(variable),
+        _build_golden_examples(variable),
+    )
+
+
 def _generate_text_prompt(variable: Variable, project_context: str, uoo_framing: str = "", input_label: str = "Document") -> str:
     """
     Generate prompt for TEXT variable type.
 
     TEXT variables extract free-form text passages (e.g., descriptions, quotes, summaries).
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided {input_label.lower()}.
 
@@ -288,9 +291,7 @@ def _generate_category_prompt(variable: Variable, project_context: str, uoo_fram
 
     CATEGORY variables classify text into predefined categories.
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     # Extract classification rules
     rules = variable.classification_rules or {}
@@ -354,9 +355,7 @@ def _generate_number_prompt(variable: Variable, project_context: str, uoo_framin
 
     NUMBER variables extract numerical values (integers or floats).
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided {input_label.lower()}.
 
@@ -402,9 +401,7 @@ def _generate_date_prompt(variable: Variable, project_context: str, uoo_framing:
 
     DATE variables extract dates in ISO 8601 format (YYYY-MM-DD).
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided {input_label.lower()}.
 
@@ -452,9 +449,7 @@ def _generate_boolean_prompt(variable: Variable, project_context: str, uoo_frami
 
     BOOLEAN variables extract yes/no or true/false values.
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided {input_label.lower()}.
 
@@ -501,9 +496,7 @@ def _generate_location_prompt(variable: Variable, project_context: str, uoo_fram
 
     LOCATION variables extract geographical locations, addresses, or place names.
     """
-    uncertainty_instructions = _build_uncertainty_handling(variable)
-    edge_case_instructions = _build_edge_case_handling(variable)
-    golden_examples_section = _build_golden_examples(variable)
+    uncertainty_instructions, edge_case_instructions, golden_examples_section = _build_common_sections(variable)
 
     prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided {input_label.lower()}.
 

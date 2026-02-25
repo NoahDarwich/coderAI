@@ -30,6 +30,7 @@ const TYPE_COLORS = {
   date: 'bg-purple-100 text-purple-800',
   category: 'bg-yellow-100 text-yellow-800',
   boolean: 'bg-pink-100 text-pink-800',
+  location: 'bg-orange-100 text-orange-800',
 };
 
 const TYPE_LABELS = {
@@ -38,6 +39,7 @@ const TYPE_LABELS = {
   date: 'Date',
   category: 'Category',
   boolean: 'Yes/No',
+  location: 'Location',
 };
 
 export function SchemaTable({ variables, onEdit, onDelete, onDuplicate, onReorder }: SchemaTableProps) {

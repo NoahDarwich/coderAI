@@ -56,7 +56,7 @@ const realExtractionApi = {
     const response = await apiClient.get<BackendProjectResults>(
       `/api/v1/projects/${projectId}/results`
     );
-    return response.documents.map(transformDocumentResult);
+    return response.results.map(transformDocumentResult);
   },
 
   flagResult: async (extractionId: string, flagged: boolean): Promise<{ resultId: string; flagged: boolean }> => {

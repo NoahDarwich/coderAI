@@ -224,6 +224,7 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
 
                 # Start per-document timer for ETA tracking
                 doc_start = time.monotonic()
+                extraction_count = 0
 
                 # Atomic per-document extraction using savepoint
                 try:
@@ -315,6 +316,7 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                                         entity_text=entity.get("text", "")[:500],
                                     )
                                     db.add(extraction)
+                                    extraction_count += 1
                         else:
                             # Document-level extraction (with chunk merging)
                             if len(text_segments) > 1:
@@ -338,6 +340,7 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                                     prompts=prompt_texts if prompt_texts else None,
                                 )
 
+                            extraction_count = len(extractions)
                             # Post-process and save extractions
                             for extraction_data in extractions:
                                 var_id = extraction_data["variable_id"]
@@ -383,12 +386,19 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                     job.documents_processed += 1
                     job.consecutive_failures = 0
 
+                    # EMA update on success only (exclude failed documents)
+                    doc_elapsed = time.monotonic() - doc_start
+                    if job.avg_seconds_per_doc is None:
+                        job.avg_seconds_per_doc = doc_elapsed
+                    else:
+                        job.avg_seconds_per_doc = 0.7 * job.avg_seconds_per_doc + 0.3 * doc_elapsed
+
                     db.add(_create_log(
                         job_id=job.id, level=LogLevel.INFO,
                         event_type=EventType.DOC_COMPLETED,
                         message=f"Document processed: {document.name}",
                         document_id=document_id,
-                        metadata={"extractions": len(extractions)},
+                        metadata={"extractions": extraction_count},
                     ))
 
                     await _publish_progress(ctx, job.id, "document_completed", {
@@ -436,15 +446,8 @@ async def process_extraction_job(ctx: dict, job_id: str) -> dict:
                 docs_done = job.documents_processed + job.documents_failed
                 job.progress = int((docs_done / total_documents) * 100)
 
-                # Rolling EMA of seconds per document (alpha=0.3 for smoothness)
-                doc_elapsed = time.monotonic() - doc_start
-                if job.avg_seconds_per_doc is None:
-                    job.avg_seconds_per_doc = doc_elapsed
-                else:
-                    job.avg_seconds_per_doc = 0.7 * job.avg_seconds_per_doc + 0.3 * doc_elapsed
-
                 docs_remaining = total_documents - docs_done
-                eta_seconds = int(job.avg_seconds_per_doc * docs_remaining) if docs_remaining > 0 else 0
+                eta_seconds = int(job.avg_seconds_per_doc * docs_remaining) if job.avg_seconds_per_doc and docs_remaining > 0 else 0
 
                 await db.commit()
 

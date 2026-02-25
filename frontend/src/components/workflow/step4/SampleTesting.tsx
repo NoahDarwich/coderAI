@@ -166,17 +166,18 @@ export function SampleTesting({
 
   const handleConfirmPin = (useInPrompt: boolean) => {
     if (!pinTarget) return;
+    const { extraction, variableId, variableName, documentName } = pinTarget;
     addGoldenExample.mutate({
-      variableId: pinTarget.variableId,
-      sourceText: pinTarget.extraction.source_text ?? String(pinTarget.extraction.value ?? ''),
-      value: pinTarget.extraction.value,
-      documentName: pinTarget.documentName,
+      variableId,
+      sourceText: extraction.source_text ?? String(extraction.value ?? ''),
+      value: extraction.value,
+      documentName,
       useInPrompt,
     });
     setPinTarget(null);
     toast.success('Example pinned', {
       description: useInPrompt
-        ? `"${pinTarget.variableName}" will use this as a few-shot example.`
+        ? `"${variableName}" will use this as a few-shot example.`
         : 'Saved for reference.',
     });
   };

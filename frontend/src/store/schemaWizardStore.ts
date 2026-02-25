@@ -61,10 +61,17 @@ export const useSchemaWizardStore = create<SchemaWizardState>()(
       duplicateVariable: (index) => set((state) => {
         const source = state.variables[index];
         if (!source) return state;
+        const existingNames = new Set(state.variables.map((v) => v.name));
+        const baseName = source.name.replace(/_copy(\d+)?$/, '');
+        let copyName = `${baseName}_copy`;
+        let counter = 2;
+        while (existingNames.has(copyName)) {
+          copyName = `${baseName}_copy${counter++}`;
+        }
         const copy: Variable = {
           ...source,
           id: `var-temp-${Math.random().toString(36).substring(2, 9)}`,
-          name: `${source.name}_copy`,
+          name: copyName,
           order: state.variables.length,
         };
         return { variables: [...state.variables, copy], isDraft: true };
