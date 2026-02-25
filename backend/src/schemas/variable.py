@@ -104,6 +104,22 @@ class VariableUpdate(BaseModel):
     order: Optional[int] = Field(None, ge=1)
 
 
+class GoldenExample(BaseModel):
+    """A single few-shot extraction example pinned by the user."""
+    source_text: str = Field(..., description="Verbatim excerpt from the source document")
+    value: Any = Field(..., description="The correct extracted value for this variable")
+    document_name: str = Field(..., description="Name of the source document")
+    use_in_prompt: bool = Field(True, description="Include this example in the extraction prompt")
+
+
+class GoldenExampleCreate(BaseModel):
+    """Request body for pinning a new golden example."""
+    source_text: str = Field(..., min_length=1, description="Verbatim excerpt from the source document")
+    value: Any = Field(..., description="The correct extracted value")
+    document_name: str = Field(..., min_length=1, description="Name of the source document")
+    use_in_prompt: bool = Field(True, description="Include this example in the extraction prompt")
+
+
 class Variable(BaseModel):
     """Schema for variable response."""
     id: UUID
@@ -118,6 +134,7 @@ class Variable(BaseModel):
     max_values: int = 1
     default_value: Optional[str] = None
     depends_on: Optional[List[Any]] = None
+    golden_examples: Optional[List[GoldenExample]] = None
     order: int
     created_at: datetime
     updated_at: datetime

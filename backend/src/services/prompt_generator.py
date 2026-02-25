@@ -4,7 +4,8 @@ Prompt generation service for creating optimized LLM prompts from variable defin
 This service transforms user's natural language extraction instructions into
 structured, optimized prompts for different LLM models.
 """
-from typing import Dict, Any, Optional
+import json
+from typing import Any, Dict, List, Optional
 
 from src.models.project import Project
 from src.models.variable import Variable, VariableType
@@ -168,6 +169,40 @@ def _build_edge_case_handling(variable: Variable) -> str:
     return "\n".join(instructions)
 
 
+def _build_golden_examples(variable: Variable) -> str:
+    """
+    Build few-shot examples section from variable's pinned golden examples.
+
+    Args:
+        variable: Variable model with optional golden_examples list
+
+    Returns:
+        Few-shot examples instructions string, or empty string if none
+    """
+    if not variable.golden_examples:
+        return ""
+
+    # Only include examples marked for use in prompt
+    examples: List[Dict[str, Any]] = [
+        ex for ex in variable.golden_examples if ex.get("use_in_prompt", True)
+    ]
+    if not examples:
+        return ""
+
+    lines = [
+        "\n**Few-Shot Examples:**",
+        "Here are verified examples of correct extractions to guide you:",
+    ]
+    for i, ex in enumerate(examples[:5], 1):
+        source = ex.get("source_text", "")[:300]
+        value = ex.get("value")
+        lines.append(f"\nExample {i}:")
+        lines.append(f'  Source text: "{source}"')
+        lines.append(f"  Expected output: {json.dumps(value)}")
+
+    return "\n".join(lines)
+
+
 def _generate_text_prompt(variable: Variable, project_context: str) -> str:
     """
     Generate prompt for TEXT variable type.
@@ -176,6 +211,7 @@ def _generate_text_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     prompt = f"""You are a precise data extraction assistant. Extract the following information from the provided document.
 
@@ -189,6 +225,7 @@ Variable Type: Text (free-form text)
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -220,6 +257,7 @@ def _generate_category_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     # Extract classification rules
     rules = variable.classification_rules or {}
@@ -246,6 +284,7 @@ Variable Type: Category (classification)
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Available Categories:**
 {categories_list}{other_option}
@@ -283,6 +322,7 @@ def _generate_number_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     prompt = f"""You are a precise numerical data extraction assistant. Extract the following numerical value from the provided document.
 
@@ -296,6 +336,7 @@ Variable Type: Number (integer or decimal)
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -328,6 +369,7 @@ def _generate_date_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     prompt = f"""You are a precise date extraction assistant. Extract the following date from the provided document.
 
@@ -341,6 +383,7 @@ Variable Type: Date
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -375,6 +418,7 @@ def _generate_boolean_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     prompt = f"""You are a precise boolean assessment assistant. Determine whether the following condition is true or false based on the provided document.
 
@@ -388,6 +432,7 @@ Variable Type: Boolean (true/false)
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:
@@ -421,6 +466,7 @@ def _generate_location_prompt(variable: Variable, project_context: str) -> str:
     """
     uncertainty_instructions = _build_uncertainty_handling(variable)
     edge_case_instructions = _build_edge_case_handling(variable)
+    golden_examples_section = _build_golden_examples(variable)
 
     prompt = f"""You are a precise data extraction assistant. Extract geographical location information from the provided document.
 
@@ -434,6 +480,7 @@ Variable Type: Location (geographical location, address, or place name)
 {variable.instructions}
 {uncertainty_instructions}
 {edge_case_instructions}
+{golden_examples_section}
 
 **Output Format:**
 You must respond with a valid JSON object in this exact format:

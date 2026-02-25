@@ -60,6 +60,11 @@ class Variable(Base):
     max_values = Column(Integer, nullable=False, default=1)
     default_value = Column(Text, nullable=True)
     depends_on = Column(JSONB, nullable=True, comment="List of variable IDs this depends on")
+    golden_examples = Column(
+        JSONB,
+        nullable=True,
+        comment="Few-shot examples: [{source_text, value, document_name, use_in_prompt}]",
+    )
     order = Column(Integer, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

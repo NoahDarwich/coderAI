@@ -14,6 +14,7 @@ from src.models.user import User
 from src.models.prompt import Prompt
 from src.models.variable import Variable
 from src.schemas.variable import (
+    GoldenExampleCreate,
     PromptInfo,
     Variable as VariableSchema,
     VariableCreate,
@@ -333,3 +334,93 @@ async def delete_variable(
     # Delete variable (cascade deletes related records)
     await db.delete(variable)
     await db.commit()
+
+
+@router.post(
+    "/api/v1/variables/{variable_id}/examples",
+    response_model=VariableSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def add_golden_example(
+    variable_id: UUID,
+    example: GoldenExampleCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VariableSchema:
+    """
+    Pin a golden (few-shot) example to a variable.
+
+    Appends the example to the variable's golden_examples JSONB list.
+    When use_in_prompt=True, the prompt is regenerated to include it.
+
+    Args:
+        variable_id: Variable UUID
+        example: The example to add (source_text, value, document_name, use_in_prompt)
+        db: Database session
+
+    Returns:
+        Updated variable
+
+    Raises:
+        HTTPException: 404 if variable not found or not owned by current user
+    """
+    # Load variable, verify ownership via project
+    result = await db.execute(
+        select(Variable)
+        .join(Variable.project)
+        .where(Variable.id == variable_id, Variable.project.has(user_id=current_user.id))
+    )
+    variable = result.scalar_one_or_none()
+
+    if not variable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Variable with id {variable_id} not found",
+        )
+
+    # Append to golden_examples list (create if missing)
+    existing = list(variable.golden_examples or [])
+    existing.append(example.model_dump())
+    variable.golden_examples = existing
+
+    # Regenerate prompt if the new example should appear in future extractions
+    if example.use_in_prompt:
+        result_proj = await db.execute(
+            select(Variable.project).where(Variable.id == variable_id)
+        )
+        from src.models.project import Project
+        proj_result = await db.execute(
+            select(Project).where(Project.id == variable.project_id)
+        )
+        project = proj_result.scalar_one_or_none()
+
+        current_version_result = await db.execute(
+            select(Prompt.version)
+            .where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
+        )
+        current_version = current_version_result.scalar_one_or_none() or 0
+
+        # Deactivate current prompt
+        await db.execute(
+            select(Prompt)
+            .where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
+        )
+        active_prompts = await db.execute(
+            select(Prompt).where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
+        )
+        for p in active_prompts.scalars().all():
+            p.is_active = False
+
+        prompt_data = generate_prompt(variable, project)
+        new_prompt = Prompt(
+            variable_id=variable.id,
+            prompt_text=prompt_data["prompt_text"],
+            model_config=prompt_data["model_config"],
+            version=current_version + 1,
+            is_active=True,
+        )
+        db.add(new_prompt)
+
+    await db.commit()
+    await db.refresh(variable)
+    return VariableSchema.model_validate(variable)

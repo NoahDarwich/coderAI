@@ -126,3 +126,52 @@ export function useBulkFlagResults(projectId: string) {
     },
   });
 }
+
+/**
+ * Post feedback on a single extraction (✓ / ✗)
+ */
+export function usePostFeedback() {
+  return useMutation({
+    mutationFn: ({
+      extractionId,
+      feedbackType,
+      correctedValue,
+    }: {
+      extractionId: string;
+      feedbackType: 'CORRECT' | 'INCORRECT';
+      correctedValue?: unknown;
+    }) =>
+      apiClient.post(`/api/v1/extractions/${extractionId}/feedback`, {
+        feedback_type: feedbackType,
+        corrected_value: correctedValue ?? null,
+        user_comment: null,
+      }),
+  });
+}
+
+/**
+ * Pin a golden (few-shot) example to a variable
+ */
+export function useAddGoldenExample() {
+  return useMutation({
+    mutationFn: ({
+      variableId,
+      sourceText,
+      value,
+      documentName,
+      useInPrompt,
+    }: {
+      variableId: string;
+      sourceText: string;
+      value: unknown;
+      documentName: string;
+      useInPrompt: boolean;
+    }) =>
+      apiClient.post(`/api/v1/variables/${variableId}/examples`, {
+        source_text: sourceText,
+        value,
+        document_name: documentName,
+        use_in_prompt: useInPrompt,
+      }),
+  });
+}

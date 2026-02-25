@@ -2,15 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Minus, Plus, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
+import { Minus, Plus, Pin, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useCreateJob, useJobStatus, useJobResults } from '@/lib/api/processing';
+import { usePostFeedback, useAddGoldenExample } from '@/lib/api/extraction';
+import type { BackendExtraction } from '@/lib/api/transforms';
 import type { Document } from '@/lib/types/api';
 import type { SchemaVariable } from '@/lib/types/api';
 
@@ -35,6 +47,16 @@ export function SampleTesting({
   const [sampleSizeRaw, setSampleSizeRaw] = useState<string>(String(Math.min(10, documents.length) || 1));
   const [jobId, setJobId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, 'correct' | 'incorrect'>>({});
+  const [pinTarget, setPinTarget] = useState<{
+    extraction: BackendExtraction;
+    variableId: string;
+    variableName: string;
+    documentName: string;
+  } | null>(null);
+
+  // API hooks
+  const postFeedback = usePostFeedback();
+  const addGoldenExample = useAddGoldenExample();
 
   // Keep default in sync with document count on first load
   useEffect(() => {
@@ -47,7 +69,6 @@ export function SampleTesting({
     }
   }, [documents.length]);
 
-  // API hooks
   const createJob = useCreateJob(projectId);
   const { data: job, isLoading: jobLoading } = useJobStatus(jobId, !!jobId);
   const { data: results, isLoading: resultsLoading } = useJobResults(
@@ -124,10 +145,40 @@ export function SampleTesting({
   }, [hasFailed]);
 
   const handleFeedback = (extractionId: string, correct: boolean) => {
-    setFeedback((prev) => ({
-      ...prev,
-      [extractionId]: correct ? 'correct' : 'incorrect',
-    }));
+    const newValue = correct ? 'correct' : 'incorrect';
+    if (feedback[extractionId] !== newValue) {
+      setFeedback((prev) => ({ ...prev, [extractionId]: newValue }));
+      postFeedback.mutate({
+        extractionId,
+        feedbackType: correct ? 'CORRECT' : 'INCORRECT',
+      });
+    }
+  };
+
+  const handlePinClick = (
+    extraction: BackendExtraction,
+    variableId: string,
+    variableName: string,
+    documentName: string,
+  ) => {
+    setPinTarget({ extraction, variableId, variableName, documentName });
+  };
+
+  const handleConfirmPin = (useInPrompt: boolean) => {
+    if (!pinTarget) return;
+    addGoldenExample.mutate({
+      variableId: pinTarget.variableId,
+      sourceText: pinTarget.extraction.source_text ?? String(pinTarget.extraction.value ?? ''),
+      value: pinTarget.extraction.value,
+      documentName: pinTarget.documentName,
+      useInPrompt,
+    });
+    setPinTarget(null);
+    toast.success('Example pinned', {
+      description: useInPrompt
+        ? `"${pinTarget.variableName}" will use this as a few-shot example.`
+        : 'Saved for reference.',
+    });
   };
 
   const maxSample = documents.length || 1;
@@ -407,6 +458,7 @@ export function SampleTesting({
                                         userFeedback === 'correct' ? 'default' : 'outline'
                                       }
                                       className="h-7 px-2"
+                                      title="Mark as correct"
                                       onClick={() => handleFeedback(extraction.id, true)}
                                     >
                                       <CheckCircle2 className="h-3 w-3" />
@@ -419,10 +471,29 @@ export function SampleTesting({
                                           : 'outline'
                                       }
                                       className="h-7 px-2"
+                                      title="Mark as incorrect"
                                       onClick={() => handleFeedback(extraction.id, false)}
                                     >
                                       <XCircle className="h-3 w-3" />
                                     </Button>
+                                    {extraction.value !== null && extraction.value !== undefined && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2"
+                                        title="Pin as example"
+                                        onClick={() =>
+                                          handlePinClick(
+                                            extraction,
+                                            variable.id,
+                                            variable.name,
+                                            document?.filename ?? document?.name ?? `Doc ${idx + 1}`,
+                                          )
+                                        }
+                                      >
+                                        <Pin className="h-3 w-3" />
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -460,6 +531,32 @@ export function SampleTesting({
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Pin Example Dialog */}
+      <AlertDialog open={pinTarget !== null} onOpenChange={(open) => !open && setPinTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pin this example?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pin this extraction result for{' '}
+              <span className="font-medium">{pinTarget?.variableName}</span> as a few-shot example.
+              Future LLM prompts can use it to improve extraction accuracy.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleConfirmPin(false)}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            >
+              Save for Reference
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => handleConfirmPin(true)}>
+              Use in Future Prompts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
