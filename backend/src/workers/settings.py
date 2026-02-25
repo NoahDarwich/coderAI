@@ -25,11 +25,14 @@ async def startup(ctx: dict) -> None:
     """Worker startup: initialize DB session factory and services."""
     from src.core.database import _get_session_factory
     ctx["session_factory"] = _get_session_factory()
+    ctx["shutdown_requested"] = False
     logger.info("ARQ worker started")
 
 
 async def shutdown(ctx: dict) -> None:
-    """Worker shutdown: clean up resources."""
+    """Worker shutdown: signal jobs to stop at next checkpoint, then clean up."""
+    ctx["shutdown_requested"] = True
+    logger.info("Shutdown requested — waiting for in-progress jobs to checkpoint")
     from src.core.database import close_db
     await close_db()
     logger.info("ARQ worker shut down")

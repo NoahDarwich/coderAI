@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
-from src.api.routes import auth, copilot, documents, exports, processing, projects, variables, websocket
+from src.api.routes import auth, copilot, documents, exports, processing, projects, variables, websocket, wizard
 from src.core.config import settings
 from src.core.logging import setup_logging
 
@@ -27,6 +27,9 @@ async def lifespan(app: FastAPI):
     await get_redis()
     start_subscriber()
     logger.info("Redis connection and job subscriber initialized")
+
+    from src.core.tracing import setup_tracing
+    setup_tracing(app)
 
     yield
 
@@ -73,6 +76,7 @@ app.include_router(processing.router)
 app.include_router(exports.router)
 app.include_router(copilot.router)
 app.include_router(websocket.router)
+app.include_router(wizard.router)
 
 
 @app.get("/metrics", include_in_schema=False)

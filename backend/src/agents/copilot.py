@@ -14,8 +14,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.core.config import settings
+from src.core.tracing import get_tracer
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
 
 # Maximum conversation turns to keep in context
 MAX_HISTORY_TURNS = 20
@@ -140,7 +142,10 @@ class CopilotAgent:
         messages.append(HumanMessage(content=user_message))
 
         # Call LLM
-        response = await self.llm.ainvoke(messages)
+        with _tracer.start_as_current_span("copilot.chat") as span:
+            span.set_attribute("llm.model", settings.OPENAI_MODEL or "gpt-4")
+            span.set_attribute("text.length", len(user_message))
+            response = await self.llm.ainvoke(messages)
         assistant_text = response.content
 
         # Save updated history
@@ -201,7 +206,10 @@ Suggest 3-8 variables that would be most useful for this domain. Be specific in 
             HumanMessage(content=prompt),
         ]
 
-        response = await self.llm.ainvoke(messages)
+        with _tracer.start_as_current_span("copilot.suggest_variables") as span:
+            span.set_attribute("llm.model", settings.OPENAI_MODEL or "gpt-4")
+            span.set_attribute("variables.sample_count", len(sample_texts))
+            response = await self.llm.ainvoke(messages)
 
         try:
             result = json.loads(response.content)
@@ -209,6 +217,165 @@ Suggest 3-8 variables that would be most useful for this domain. Be specific in 
         except json.JSONDecodeError:
             logger.error(f"Failed to parse variable suggestions: {response.content[:200]}")
             return []
+
+    async def suggest_unit_of_observation(
+        self,
+        domain: str,
+        document_type: Optional[str] = None,
+        sample_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Suggest a unit of observation configuration for a project.
+
+        Uses rule-based defaults by document type and domain keywords.
+        If sample_text is provided, calls LLM for a smarter suggestion.
+
+        Returns:
+            Dict with 'suggestion', 'explanation', 'alternatives'
+        """
+        # Rule-based defaults
+        single_row = {
+            "rows_per_document": "single",
+            "entity_identification_pattern": None,
+            "label": "One row per document",
+        }
+        multi_row_people = {
+            "rows_per_document": "multiple",
+            "entity_identification_pattern": "Each person or individual mentioned",
+            "label": "One row per person mentioned",
+        }
+        multi_row_items = {
+            "rows_per_document": "multiple",
+            "entity_identification_pattern": "Each distinct item, entry, or record",
+            "label": "One row per item",
+        }
+
+        doc_type_lower = (document_type or "").lower()
+        domain_lower = domain.lower()
+
+        # Heuristic: contracts, reports, letters → single row
+        single_keywords = ["contract", "report", "letter", "memo", "policy", "brief"]
+        multi_people_keywords = ["news", "interview", "survey", "census", "biography"]
+        multi_item_keywords = ["invoice", "ledger", "catalog", "inventory", "log", "table"]
+
+        suggestion = single_row
+        explanation = "Documents in this domain typically map to one row per document."
+        alternatives = [multi_row_people, multi_row_items]
+
+        for kw in multi_people_keywords:
+            if kw in doc_type_lower or kw in domain_lower:
+                suggestion = multi_row_people
+                explanation = f"'{kw}' documents often contain multiple people or subjects."
+                alternatives = [single_row, multi_row_items]
+                break
+
+        for kw in multi_item_keywords:
+            if kw in doc_type_lower or kw in domain_lower:
+                suggestion = multi_row_items
+                explanation = f"'{kw}' documents often contain multiple distinct items."
+                alternatives = [single_row, multi_row_people]
+                break
+
+        for kw in single_keywords:
+            if kw in doc_type_lower or kw in domain_lower:
+                suggestion = single_row
+                explanation = f"'{kw}' documents typically represent a single record."
+                alternatives = [multi_row_people, multi_row_items]
+                break
+
+        # LLM-enhanced suggestion when sample_text is provided
+        if sample_text:
+            try:
+                prompt = f"""Analyze this document sample and suggest the best unit of observation.
+
+Domain: {domain}
+Document type: {document_type or 'unspecified'}
+
+Sample text (first 2000 chars):
+{sample_text[:2000]}
+
+Should each document produce a single row of data, or multiple rows (one per entity)?
+If multiple, what pattern identifies each entity?
+
+Return JSON:
+{{
+    "rows_per_document": "single" or "multiple",
+    "entity_identification_pattern": "pattern description or null",
+    "label": "human-readable label",
+    "explanation": "why this is the best choice"
+}}"""
+
+                messages = [
+                    SystemMessage(content="You are a data extraction expert. Respond only with valid JSON."),
+                    HumanMessage(content=prompt),
+                ]
+                response = await self.llm.ainvoke(messages)
+                result = json.loads(response.content)
+
+                suggestion = {
+                    "rows_per_document": result.get("rows_per_document", suggestion["rows_per_document"]),
+                    "entity_identification_pattern": result.get("entity_identification_pattern"),
+                    "label": result.get("label", suggestion["label"]),
+                }
+                explanation = result.get("explanation", explanation)
+            except Exception as e:
+                logger.warning(f"LLM UoO suggestion failed, using rule-based: {e}")
+
+        return {
+            "suggestion": suggestion,
+            "explanation": explanation,
+            "alternatives": alternatives,
+        }
+
+    async def suggest_defaults(
+        self,
+        domain: str,
+        language: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Suggest smart project defaults based on domain.
+
+        Returns:
+            Dict with project_name_pattern, language, suggested_variable_types, explanation
+        """
+        prompt = f"""For a data extraction project in the domain "{domain}", suggest:
+1. A project name pattern (e.g., "{{domain}} Extraction - {{date}}")
+2. The likely document language (given hint: {language or 'auto-detect'})
+3. 3-5 recommended variable types with name and type for this domain
+
+Variable types available: TEXT, NUMBER, DATE, CATEGORY, BOOLEAN, LOCATION
+
+Return JSON:
+{{
+    "project_name_pattern": "suggested pattern",
+    "language": "two-letter code",
+    "suggested_variable_types": [
+        {{"name": "variable name", "type": "TYPE", "description": "what it captures"}}
+    ],
+    "explanation": "brief explanation"
+}}"""
+
+        try:
+            messages = [
+                SystemMessage(content="You are a data extraction expert. Respond only with valid JSON."),
+                HumanMessage(content=prompt),
+            ]
+            response = await self.llm.ainvoke(messages)
+            result = json.loads(response.content)
+            return {
+                "project_name_pattern": result.get("project_name_pattern", f"{domain} Extraction"),
+                "language": result.get("language", language or "en"),
+                "suggested_variable_types": result.get("suggested_variable_types", []),
+                "explanation": result.get("explanation", ""),
+            }
+        except Exception as e:
+            logger.warning(f"LLM defaults suggestion failed: {e}")
+            return {
+                "project_name_pattern": f"{domain} Extraction",
+                "language": language or "en",
+                "suggested_variable_types": [],
+                "explanation": "Could not generate AI suggestions; using basic defaults.",
+            }
 
     async def clear_history(self, project_id: UUID) -> None:
         """Clear conversation history for a project."""

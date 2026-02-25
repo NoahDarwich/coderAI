@@ -181,10 +181,10 @@ Phase 1 (MVP) → Phase 2 (Core) → Phase 3 (AI Co-pilot) → Phase 4 (Scale) �
 
 ### 3C: Guided Setup Wizard Support
 
-- [ ] T085 Add API endpoints to support wizard flow (project context questions, UoO recommendations)
-- [ ] T086 Smart defaults: suggest unit_of_observation based on document type
+- [x] T085 Add API endpoints to support wizard flow (project context questions, UoO recommendations)
+- [x] T086 Smart defaults: suggest unit_of_observation based on document type
 
-**Phase 3 Checkpoint**: Co-pilot suggests variables, refines prompts from feedback, assists with project setup. ✅ (T085-T086 deferred to frontend build)
+**Phase 3 Checkpoint**: Co-pilot suggests variables, refines prompts from feedback, assists with project setup. ✅
 
 ---
 
@@ -207,7 +207,7 @@ Phase 1 (MVP) → Phase 2 (Core) → Phase 3 (AI Co-pilot) → Phase 4 (Scale) �
 ### 4C: Observability
 
 - [x] T093 Add Prometheus metrics: documents_processed_total, extractions_total, llm_calls_total, llm_call_duration_seconds, extraction_confidence histogram, jobs_total, document_processing_duration_seconds
-- [ ] T094 Add OpenTelemetry tracing (deferred)
+- [x] T094 Add OpenTelemetry tracing (tracing.py, spans on LLM calls in copilot + extraction service)
 - [x] T095 Structured logging with job_id, document_id in processing logs
 
 ### 4D: Rate Limiting & Cost Controls
@@ -225,14 +225,14 @@ Phase 1 (MVP) → Phase 2 (Core) → Phase 3 (AI Co-pilot) → Phase 4 (Scale) �
 
 - [x] T101 Health endpoints: /health/live (liveness), /health/ready (DB + Redis check)
 - [x] T102 Dockerfile and docker-compose.yml (API + Worker + PostgreSQL + Redis)
-- [ ] T103 Graceful shutdown (deferred — requires signal handling in worker)
+- [x] T103 Graceful shutdown (shutdown_requested flag in worker ctx, checkpoint at document boundary)
 
 ### 4G: Circuit Breaker
 
 - [x] T104 Circuit breaker for LLM calls: open after 5 failures, half-open after 30s, close after 3 successes
 - [x] T105 Fail fast with error message when circuit is open
 
-**Phase 4 Checkpoint**: Large document chunking, parallel extraction, Prometheus metrics, rate limiting, DOCX/HTML support, Docker deployment, circuit breaker. ✅
+**Phase 4 Checkpoint**: Large document chunking, parallel extraction, Prometheus + OTEL observability, rate limiting, DOCX/HTML support, Docker deployment, circuit breaker, graceful shutdown. ✅
 
 ---
 
@@ -255,7 +255,7 @@ Phase 1 (MVP) → Phase 2 (Core) → Phase 3 (AI Co-pilot) → Phase 4 (Scale) �
 |-------|-------------|------------|--------|
 | 1 | Foundation (MVP) | 44 tasks (T001-T044) | **Complete** |
 | 2 | Core Features | 30 tasks (T045-T074) | **Complete** |
-| 3 | AI Co-pilot | 12 tasks (T075-T086) | **Complete** (T085-T086 deferred) |
-| 4 | Scale & Polish | 19 tasks (T087-T105) | **Complete** (T094, T103 deferred) |
+| 3 | AI Co-pilot | 12 tasks (T075-T086) | **Complete** |
+| 4 | Scale & Polish | 19 tasks (T087-T105) | **Complete** |
 | 5 | Advanced (v2) | 4 tasks (T106-T109) | Not started |
-| **Total** | | **109 tasks** | **101 complete, 4 deferred, 4 pending** |
+| **Total** | | **109 tasks** | **105 complete, 4 pending (Phase 5)** |

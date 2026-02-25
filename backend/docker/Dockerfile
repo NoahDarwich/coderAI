@@ -21,6 +21,9 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
+# Ensure graceful shutdown on SIGTERM
+STOPSIGNAL SIGTERM
+
 # Run migrations and start server
 CMD alembic upgrade head && \
     uvicorn src.main:app --host 0.0.0.0 --port 8000

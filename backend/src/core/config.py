@@ -123,6 +123,20 @@ class Settings(BaseSettings):
         default=60,
         description="Rate limit period in seconds"
     )
+
+    # OpenTelemetry
+    OTEL_ENABLED: bool = Field(default=False, description="Enable OpenTelemetry tracing")
+    OTEL_SERVICE_NAME: str = Field(default="coderai-backend", description="OTEL service name")
+    OTEL_EXPORTER_ENDPOINT: str = Field(
+        default="http://localhost:4318",
+        description="OTLP exporter endpoint"
+    )
+
+    # Worker Checkpoint
+    WORKER_CHECKPOINT_INTERVAL: int = Field(
+        default=5,
+        description="Commit progress every N documents during extraction"
+    )
     
     model_config = SettingsConfigDict(
         env_file=".env",

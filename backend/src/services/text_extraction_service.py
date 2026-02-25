@@ -10,8 +10,11 @@ from typing import Any, Dict, List, Optional
 from openai import AsyncOpenAI
 
 from src.core.config import settings
+from src.core.tracing import get_tracer
 from src.models.variable import Variable, VariableType
 from src.services.response_parser import parse_extraction_response
+
+_tracer = get_tracer(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,20 @@ class TextExtractionService:
         Extract a single variable from text using OpenAI.
         Includes circuit breaker check and exponential backoff retry.
         """
+        with _tracer.start_as_current_span("extract_variable") as span:
+            span.set_attribute("llm.model", self.default_model)
+            span.set_attribute("llm.variable_type", variable.type.value)
+            span.set_attribute("text.length", len(text))
+            return await self._extract_variable_impl(text, variable, prompt_text, max_retries, span)
+
+    async def _extract_variable_impl(
+        self,
+        text: str,
+        variable: Variable,
+        prompt_text: Optional[str],
+        max_retries: int,
+        span,
+    ) -> Dict[str, Any]:
         # Circuit breaker check
         if not _circuit_breaker.check():
             logger.warning("Circuit breaker OPEN — skipping LLM call")
@@ -138,6 +155,7 @@ class TextExtractionService:
 
                 result = parse_extraction_response(response_text)
                 _circuit_breaker.record_success()
+                span.set_attribute("llm.confidence", result.get("confidence", 0))
                 return result
 
             except Exception as e:
@@ -192,6 +210,17 @@ class TextExtractionService:
         Returns:
             List of dicts with 'index', 'text' (entity excerpt), 'label'
         """
+        with _tracer.start_as_current_span("identify_entities") as span:
+            span.set_attribute("text.length", len(text))
+            span.set_attribute("llm.model", self.default_model)
+            return await self._identify_entities_impl(text, entity_pattern, max_retries)
+
+    async def _identify_entities_impl(
+        self,
+        text: str,
+        entity_pattern: str,
+        max_retries: int,
+    ) -> List[Dict[str, Any]]:
         if not _circuit_breaker.check():
             logger.warning("Circuit breaker OPEN — skipping entity identification")
             return []
@@ -353,6 +382,22 @@ Rules:
         Returns:
             List of extraction result dicts
         """
+        with _tracer.start_as_current_span("extract_all_variables") as span:
+            span.set_attribute("text.length", len(text))
+            span.set_attribute("variables.count", len(variables))
+            span.set_attribute("parallel", parallel)
+            return await self._extract_all_variables_impl(
+                text, variables, prompts, parallel, max_concurrency,
+            )
+
+    async def _extract_all_variables_impl(
+        self,
+        text: str,
+        variables: List[Variable],
+        prompts: Optional[Dict[str, str]],
+        parallel: bool,
+        max_concurrency: int,
+    ) -> List[Dict[str, Any]]:
         async def _extract_one(variable: Variable) -> Dict[str, Any]:
             prompt_text = prompts.get(str(variable.id)) if prompts else None
             extraction = await self.extract_variable(
