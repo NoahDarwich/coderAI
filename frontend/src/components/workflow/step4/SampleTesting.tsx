@@ -2,20 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { Minus, Plus, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
 import { useCreateJob, useJobStatus, useJobResults } from '@/lib/api/processing';
 import type { Document } from '@/lib/types/api';
 import type { SchemaVariable } from '@/lib/types/api';
@@ -37,18 +31,21 @@ export function SampleTesting({
   onApprove,
   onRefineSchema,
 }: SampleTestingProps) {
-  const [sampleSize, setSampleSize] = useState<number>(10);
+  const [sampleSize, setSampleSize] = useState<number>(Math.min(10, documents.length));
+  const [sampleSizeRaw, setSampleSizeRaw] = useState<string>(String(Math.min(10, documents.length) || 1));
   const [jobId, setJobId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, 'correct' | 'incorrect'>>({});
 
-  // Debug logging
+  // Keep default in sync with document count on first load
   useEffect(() => {
-    console.log('=== SAMPLE TESTING DEBUG ===');
-    console.log('Received variables:', variables);
-    console.log('Variables count:', variables?.length);
-    console.log('Variables array:', JSON.stringify(variables, null, 2));
-    console.log('===========================');
-  }, [variables]);
+    if (documents.length > 0) {
+      setSampleSize((prev) => {
+        const clamped = Math.min(prev, documents.length);
+        setSampleSizeRaw(String(clamped));
+        return clamped;
+      });
+    }
+  }, [documents.length]);
 
   // API hooks
   const createJob = useCreateJob(projectId);
@@ -62,13 +59,13 @@ export function SampleTesting({
   const isComplete = job?.status === 'completed';
   const hasFailed = job?.status === 'failed';
 
-  // Reset job when sample size changes
+  // Reset job when sample size changes (only when idle)
   useEffect(() => {
     if (!isProcessing && !isComplete) {
       setJobId(null);
       setFeedback({});
     }
-  }, [sampleSize]);
+  }, [sampleSize, isProcessing, isComplete]);
 
   const handleRunSample = async () => {
     if (documents.length === 0) {
@@ -86,11 +83,9 @@ export function SampleTesting({
     }
 
     try {
-      // Get sample of document IDs
       const actualSampleSize = Math.min(sampleSize, documents.length);
-      const sampleDocIds = documents.slice(0, actualSampleSize).map(d => d.id);
+      const sampleDocIds = documents.slice(0, actualSampleSize).map((d) => d.id);
 
-      // Create SAMPLE job
       const createdJob = await createJob.mutateAsync({
         jobType: 'SAMPLE',
         documentIds: sampleDocIds,
@@ -100,7 +95,7 @@ export function SampleTesting({
       setFeedback({});
 
       toast.info('Sample processing started', {
-        description: `Processing ${actualSampleSize} documents...`,
+        description: `Processing ${actualSampleSize} of ${documents.length} documents…`,
       });
     } catch (error) {
       console.error('Failed to start sample processing:', error);
@@ -135,6 +130,29 @@ export function SampleTesting({
     }));
   };
 
+  const maxSample = documents.length || 1;
+
+  const clampSampleSize = (v: number) => Math.min(Math.max(1, v), maxSample);
+
+  const changeSampleSize = (delta: number) => {
+    setSampleSize((prev) => {
+      const next = clampSampleSize(prev + delta);
+      setSampleSizeRaw(String(next));
+      return next;
+    });
+  };
+
+  const handleSampleSizeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSampleSizeRaw(e.target.value);
+  };
+
+  const handleSampleSizeBlur = () => {
+    const v = parseInt(sampleSizeRaw, 10);
+    const clamped = isNaN(v) ? sampleSize : clampSampleSize(v);
+    setSampleSize(clamped);
+    setSampleSizeRaw(String(clamped));
+  };
+
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 85) return 'text-green-600';
     if (confidence >= 70) return 'text-yellow-600';
@@ -158,15 +176,20 @@ export function SampleTesting({
   const hasFeedback = Object.keys(feedback).length > 0;
 
   // Group extractions by document
-  const extractionsByDocument = results?.extractions.reduce((acc, extraction) => {
-    if (!acc[extraction.document_id]) {
-      acc[extraction.document_id] = [];
-    }
-    acc[extraction.document_id].push(extraction);
-    return acc;
-  }, {} as Record<string, typeof results.extractions>) || {};
+  const extractionsByDocument =
+    results?.extractions.reduce(
+      (acc, extraction) => {
+        if (!acc[extraction.document_id]) {
+          acc[extraction.document_id] = [];
+        }
+        acc[extraction.document_id].push(extraction);
+        return acc;
+      },
+      {} as Record<string, typeof results.extractions>
+    ) || {};
 
   const documentIds = Object.keys(extractionsByDocument);
+  const isDisabled = isProcessing || createJob.isPending;
 
   return (
     <div className="space-y-6">
@@ -174,29 +197,50 @@ export function SampleTesting({
         <CardHeader>
           <CardTitle>Sample Testing</CardTitle>
           <CardDescription>
-            Test extraction on a small sample of documents before processing all {totalDocuments} documents
+            Test extraction on a small sample of documents before processing all{' '}
+            {totalDocuments} documents
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Sample size stepper */}
           <div className="space-y-2">
-            <Label htmlFor="sample-size">Sample Size</Label>
-            <Select
-              value={sampleSize.toString()}
-              onValueChange={(value) => setSampleSize(parseInt(value))}
-              disabled={isProcessing || createJob.isPending}
-            >
-              <SelectTrigger id="sample-size" className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Select sample size" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 documents</SelectItem>
-                <SelectItem value="10">10 documents</SelectItem>
-                <SelectItem value="15">15 documents</SelectItem>
-                <SelectItem value="20">20 documents</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Sample Size</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => changeSampleSize(-1)}
+                disabled={isDisabled || sampleSize <= 1}
+                aria-label="Decrease sample size"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Input
+                type="number"
+                min={1}
+                max={maxSample}
+                value={sampleSizeRaw}
+                onChange={handleSampleSizeInput}
+                onBlur={handleSampleSizeBlur}
+                disabled={isDisabled}
+                className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                aria-label="Sample size"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => changeSampleSize(1)}
+                disabled={isDisabled || sampleSize >= maxSample}
+                aria-label="Increase sample size"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                of {documents.length} document{documents.length !== 1 ? 's' : ''}
+              </span>
+            </div>
             <p className="text-sm text-muted-foreground">
-              We recommend testing on 10-20 documents to validate extraction accuracy
+              We recommend testing on 10–20 documents to validate extraction accuracy
             </p>
           </div>
 
@@ -220,18 +264,13 @@ export function SampleTesting({
 
           <Button
             onClick={handleRunSample}
-            disabled={
-              isProcessing ||
-              createJob.isPending ||
-              variables.length === 0 ||
-              documents.length === 0
-            }
+            disabled={isDisabled || variables.length === 0 || documents.length === 0}
             className="w-full sm:w-auto"
           >
-            {isProcessing || createJob.isPending ? (
+            {isDisabled ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing Sample...
+                Processing Sample…
               </>
             ) : (
               <>
@@ -247,10 +286,8 @@ export function SampleTesting({
       {job && isProcessing && (
         <Card>
           <CardHeader>
-            <CardTitle>Processing...</CardTitle>
-            <CardDescription>
-              Extracting data from sample documents
-            </CardDescription>
+            <CardTitle>Processing…</CardTitle>
+            <CardDescription>Extracting data from sample documents</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -283,7 +320,8 @@ export function SampleTesting({
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800">
               <span className="font-medium">Review sample results</span>
-              {' '}- Check each extracted value and mark it as correct (✓) or incorrect (✗) to help improve accuracy.
+              {' '}— Check each extracted value and mark it as correct (✓) or incorrect (✗) to
+              help improve accuracy.
             </AlertDescription>
           </Alert>
 
@@ -292,12 +330,13 @@ export function SampleTesting({
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Sample Results ({documentIds.length} documents)</CardTitle>
-                  <CardDescription>
-                    Review and validate the extracted data
-                  </CardDescription>
+                  <CardDescription>Review and validate the extracted data</CardDescription>
                 </div>
                 {hasFeedback && (
-                  <Badge variant={accuracy >= 80 ? 'default' : 'destructive'} className="text-base px-4 py-2">
+                  <Badge
+                    variant={accuracy >= 80 ? 'default' : 'destructive'}
+                    className="text-base px-4 py-2"
+                  >
                     {accuracy}% accuracy
                   </Badge>
                 )}
@@ -319,7 +358,7 @@ export function SampleTesting({
                   <tbody>
                     {documentIds.map((docId, idx) => {
                       const docExtractions = extractionsByDocument[docId];
-                      const document = documents.find(d => d.id === docId);
+                      const document = documents.find((d) => d.id === docId);
 
                       return (
                         <tr key={docId} className="border-b hover:bg-muted/50">
@@ -328,9 +367,11 @@ export function SampleTesting({
                           </td>
                           {variables.map((variable) => {
                             const extraction = docExtractions.find(
-                              e => e.variable_id === variable.id
+                              (e) => e.variable_id === variable.id
                             );
-                            const userFeedback = extraction ? feedback[extraction.id] : undefined;
+                            const userFeedback = extraction
+                              ? feedback[extraction.id]
+                              : undefined;
 
                             if (!extraction) {
                               return (
@@ -356,13 +397,15 @@ export function SampleTesting({
                                   </div>
                                   {extraction.source_text && (
                                     <div className="text-xs text-muted-foreground italic">
-                                      "{extraction.source_text.substring(0, 50)}..."
+                                      "{extraction.source_text.substring(0, 50)}…"
                                     </div>
                                   )}
                                   <div className="flex gap-1">
                                     <Button
                                       size="sm"
-                                      variant={userFeedback === 'correct' ? 'default' : 'outline'}
+                                      variant={
+                                        userFeedback === 'correct' ? 'default' : 'outline'
+                                      }
                                       className="h-7 px-2"
                                       onClick={() => handleFeedback(extraction.id, true)}
                                     >
@@ -370,7 +413,11 @@ export function SampleTesting({
                                     </Button>
                                     <Button
                                       size="sm"
-                                      variant={userFeedback === 'incorrect' ? 'destructive' : 'outline'}
+                                      variant={
+                                        userFeedback === 'incorrect'
+                                          ? 'destructive'
+                                          : 'outline'
+                                      }
                                       className="h-7 px-2"
                                       onClick={() => handleFeedback(extraction.id, false)}
                                     >

@@ -9,12 +9,18 @@ from pydantic import BaseModel, Field
 
 from src.models.extraction import ExtractionStatus
 from src.models.processing_job import JobType, JobStatus
+from src.schemas.base import BaseSchema
 
 
 class JobCreate(BaseModel):
     """Schema for creating a new processing job."""
     job_type: JobType = Field(..., description="Job type (SAMPLE or FULL)")
     document_ids: List[UUID] = Field(..., min_length=1, description="List of document IDs to process")
+
+
+class SampleJobCreate(BaseSchema):
+    """Optional request body for the sample-run convenience endpoint."""
+    count: int = Field(default=10, ge=1, description="Number of documents to sample (ordered by upload date)")
 
 
 class ProcessingJob(BaseModel):

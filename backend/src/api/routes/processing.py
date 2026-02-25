@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,7 @@ from src.models.document import Document
 from src.models.user import User
 from src.models.extraction import Extraction
 from src.models.extraction_feedback import ExtractionFeedback
-from src.models.processing_job import JobStatus, ProcessingJob
+from src.models.processing_job import JobStatus, JobType, ProcessingJob
 from src.models.processing_log import ProcessingLog
 from src.models.project import Project
 from src.models.variable import Variable
@@ -32,6 +32,7 @@ from src.schemas.processing import (
     ProcessingJob as ProcessingJobSchema,
     ProcessingLogEntry,
     ProjectResults,
+    SampleJobCreate,
     VariableStatistics,
 )
 from src.services.feedback_analyzer import FeedbackAnalyzer
@@ -596,14 +597,20 @@ async def get_project_results(
 )
 async def start_sample_processing(
     project_id: UUID,
+    body: Optional[SampleJobCreate] = Body(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingJobSchema:
     """
-    Convenience endpoint to start sample processing (first 10 documents).
+    Convenience endpoint to start sample processing.
+
+    Selects the first `count` documents (ordered by upload date) and starts a
+    SAMPLE job. The main client uses POST /api/v1/projects/{id}/jobs with explicit
+    document IDs; this endpoint is provided for API consumers and tooling.
 
     Args:
         project_id: Project UUID
+        body: Optional body; defaults to count=10 when omitted
         db: Database session
 
     Returns:
@@ -613,6 +620,8 @@ async def start_sample_processing(
         HTTPException: 404 if project not found
         HTTPException: 400 if no documents found
     """
+    count = body.count if body is not None else 10
+
     # Verify project exists and belongs to user
     result = await db.execute(select(Project).where(Project.id == project_id, Project.user_id == current_user.id))
     project = result.scalar_one_or_none()
@@ -623,12 +632,12 @@ async def start_sample_processing(
             detail=f"Project with id {project_id} not found",
         )
 
-    # Get first 10 documents
+    # Get first N documents ordered by upload date
     result = await db.execute(
         select(Document)
         .where(Document.project_id == project_id)
         .order_by(Document.uploaded_at)
-        .limit(10)
+        .limit(count)
     )
     documents = result.scalars().all()
 
@@ -643,7 +652,6 @@ async def start_sample_processing(
     # Create job
     job_manager = JobManager(db)
     try:
-        from src.models.processing_job import JobType
         job = await job_manager.create_job(
             project_id=project_id,
             job_type=JobType.SAMPLE,
@@ -712,7 +720,6 @@ async def start_full_processing(
     # Create job
     job_manager = JobManager(db)
     try:
-        from src.models.processing_job import JobType
         job = await job_manager.create_job(
             project_id=project_id,
             job_type=JobType.FULL,
