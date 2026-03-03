@@ -8,7 +8,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from src.models.compat import UUID
 
 from src.core.database import Base
 

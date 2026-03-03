@@ -17,8 +17,6 @@ import { DocumentUploader } from '@/components/workflow/step1/DocumentUploader';
 import { DocumentList } from '@/components/workflow/step1/DocumentList';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { useProjectStore } from '@/store/projectStore';
-import { Document } from '@/types';
-import { generateId } from '@/lib/utils';
 import { apiClient } from '@/lib/api/client';
 import { useDocuments } from '@/lib/api/documents';
 
@@ -28,7 +26,6 @@ export default function DocumentsPage() {
   const projectId = params.id as string;
   const { updateProject } = useProjectStore();
 
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [textInput, setTextInput] = useState('');
@@ -39,54 +36,18 @@ export default function DocumentsPage() {
   }, []);
 
   // Load documents for this project using API hook
-  const { data: apiDocuments, isLoading, refetch } = useDocuments(projectId);
-
-  // Update local state when API data changes
-  useEffect(() => {
-    if (apiDocuments) {
-      // Map from API Document to @/types Document
-      setDocuments(apiDocuments.map((d) => ({
-        id: d.id,
-        projectId: d.projectId,
-        fileName: d.filename || d.name,
-        fileType: d.fileType as Document['fileType'],
-        fileSize: d.fileSize,
-        uploadedAt: d.uploadedAt,
-        status: 'uploaded' as Document['status'],
-        contentPreview: (d as any).contentPreview,
-      })));
-    }
-  }, [apiDocuments]);
+  const { data: documents = [], isLoading, refetch } = useDocuments(projectId);
 
   const handleUpload = async (files: File[]) => {
     setIsUploading(true);
     try {
-      // Simulate upload - in real app, this would call API
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      const newDocuments: Document[] = files.map((file) => ({
-        id: generateId(),
-        projectId,
-        fileName: file.name,
-        fileType: (file.name.endsWith('.pdf')
-          ? 'pdf'
-          : file.name.endsWith('.docx')
-          ? 'docx'
-          : 'txt') as Document['fileType'],
-        fileSize: file.size,
-        uploadedAt: new Date().toISOString(),
-        status: 'uploaded' as Document['status'],
-      }));
-
-      setDocuments((prev) => [...prev, ...newDocuments]);
-
-      // Update project document count
-      updateProject(projectId, {
-        documentCount: documents.length + newDocuments.length,
-        status: 'setup',
-      });
+      // Upload each file to backend sequentially
+      for (const file of files) {
+        await apiClient.upload(`/api/v1/projects/${projectId}/documents`, file);
+      }
+      await refetch();
+      updateProject(projectId, { status: 'setup' });
     } catch (error) {
-      console.error('Upload failed:', error);
       throw error;
     } finally {
       setIsUploading(false);
@@ -94,20 +55,8 @@ export default function DocumentsPage() {
   };
 
   const handleDelete = async (documentId: string) => {
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
-
-      // Update project document count
-      updateProject(projectId, {
-        documentCount: documents.length - 1,
-      });
-    } catch (error) {
-      console.error('Delete failed:', error);
-      throw error;
-    }
+    await apiClient.delete(`/api/v1/documents/${documentId}`);
+    await refetch();
   };
 
   const handleTextSubmit = async () => {
@@ -115,67 +64,17 @@ export default function DocumentsPage() {
 
     setIsUploading(true);
     try {
-      // Check if using mock data
-      const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-
-      if (useMockData) {
-        // Mock mode - simulate creation
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        const newDoc: Document = {
-          id: generateId(),
-          projectId,
-          fileName: textDocName,
-          fileType: 'txt',
-          fileSize: new Blob([textInput]).size,
-          uploadedAt: new Date().toISOString(),
-          status: 'uploaded',
-          contentPreview: textInput.substring(0, 200),
-        };
-
-        setDocuments((prev) => [...prev, newDoc]);
-      } else {
-        // Real API call
-        const response = await apiClient.post(
-          `/api/v1/projects/${projectId}/documents/text`,
-          {
-            name: textDocName,
-            content: textInput,
-          }
-        );
-
-        // Convert backend response to frontend format
-        const backendDoc = response as any;
-        const newDoc: Document = {
-          id: backendDoc.id,
-          projectId: backendDoc.project_id,
-          fileName: backendDoc.name,
-          fileType: (backendDoc.content_type || 'txt').toLowerCase() as Document['fileType'],
-          fileSize: backendDoc.size_bytes,
-          uploadedAt: backendDoc.uploaded_at,
-          status: 'uploaded',
-          contentPreview: textInput.substring(0, 200),
-        };
-
-        setDocuments((prev) => [...prev, newDoc]);
-
-        // Refetch documents to get updated list from backend
-        refetch();
-      }
-
-      // Clear form
+      await apiClient.post(`/api/v1/projects/${projectId}/documents/text`, {
+        name: textDocName,
+        content: textInput,
+      });
+      await refetch();
       setTextInput('');
       setTextDocName('');
-
-      // Update project document count
-      updateProject(projectId, {
-        documentCount: documents.length + 1,
-        status: 'setup',
-      });
+      updateProject(projectId, { status: 'setup' });
     } catch (error) {
-      console.error('Text document creation failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Failed to create text document: ${errorMessage}\n\nPlease make sure:\n1. Backend is running (http://localhost:8000)\n2. Project exists in backend\n3. Check browser console for details`);
+      alert(`Failed to create text document: ${errorMessage}`);
     } finally {
       setIsUploading(false);
     }

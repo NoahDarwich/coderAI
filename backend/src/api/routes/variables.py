@@ -5,7 +5,8 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user, get_db
@@ -419,4 +420,120 @@ async def add_golden_example(
 
     await db.commit()
     await db.refresh(variable)
+    return VariableSchema.model_validate(variable)
+
+
+# ─── Refinement preview & apply ───────────────────────────────────────────────
+
+class RefinementAlternative(BaseModel):
+    prompt_text: str
+    explanation: str
+    focus: str
+
+
+class PromptApply(BaseModel):
+    prompt_text: str
+
+
+@router.post(
+    "/api/v1/variables/{variable_id}/refine/preview",
+    response_model=list[RefinementAlternative],
+)
+async def preview_refinement(
+    variable_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RefinementAlternative]:
+    """
+    Run the RefinerAgent synchronously and return prompt alternatives.
+
+    Analyses accumulated feedback for the variable and suggests 2-3 improved
+    prompt versions.  Returns an empty list when there is no active prompt or
+    no feedback yet.
+    """
+    result = await db.execute(
+        select(Variable)
+        .join(Variable.project)
+        .where(Variable.id == variable_id, Variable.project.has(user_id=current_user.id))
+    )
+    variable = result.scalar_one_or_none()
+
+    if not variable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Variable with id {variable_id} not found",
+        )
+
+    from src.agents.refiner import RefinerAgent
+    agent = RefinerAgent()
+    alternatives = await agent.analyze_and_refine(db, variable_id, min_feedback_count=1)
+
+    if not alternatives:
+        return []
+
+    return [
+        RefinementAlternative(
+            prompt_text=alt.prompt_text,
+            explanation=alt.explanation,
+            focus=alt.focus,
+        )
+        for alt in alternatives
+    ]
+
+
+@router.put(
+    "/api/v1/variables/{variable_id}/prompt",
+    response_model=VariableSchema,
+)
+async def apply_prompt(
+    variable_id: UUID,
+    data: PromptApply,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VariableSchema:
+    """
+    Apply a prompt text as the new active prompt version for a variable.
+
+    Deactivates the current active prompt and creates a new version with the
+    provided text.
+    """
+    result = await db.execute(
+        select(Variable)
+        .join(Variable.project)
+        .where(Variable.id == variable_id, Variable.project.has(user_id=current_user.id))
+    )
+    variable = result.scalar_one_or_none()
+
+    if not variable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Variable with id {variable_id} not found",
+        )
+
+    # Determine next version number
+    result = await db.execute(
+        select(func.max(Prompt.version)).where(Prompt.variable_id == variable_id)
+    )
+    max_version = result.scalar_one_or_none() or 0
+
+    # Deactivate all current prompts
+    active_result = await db.execute(
+        select(Prompt).where(Prompt.variable_id == variable_id, Prompt.is_active.is_(True))
+    )
+    for p in active_result.scalars().all():
+        p.is_active = False
+
+    # Create new active prompt
+    from src.core.config import settings as app_settings
+    new_prompt = Prompt(
+        variable_id=variable_id,
+        prompt_text=data.prompt_text,
+        model_config_={"model": app_settings.OPENAI_MODEL or "gpt-4"},
+        version=max_version + 1,
+        is_active=True,
+    )
+    db.add(new_prompt)
+    await db.commit()
+    await db.refresh(variable)
+
     return VariableSchema.model_validate(variable)

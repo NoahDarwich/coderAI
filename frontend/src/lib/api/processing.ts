@@ -160,12 +160,7 @@ const realProcessingApi = {
       `/api/v1/jobs/${jobId}`
     );
 
-    let logs: BackendProcessingLog[] = [];
-    try {
-      logs = (response as any).logs || [];
-    } catch {
-      // Logs endpoint might not exist
-    }
+    const logs: BackendProcessingLog[] = (response as any).recent_logs || [];
 
     return transformBackendJobWithLogs(response, logs);
   },

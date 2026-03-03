@@ -1,26 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Public routes that don't require authentication
-  const publicRoutes = ['/', '/auth/login', '/auth/register'];
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith('/auth/'));
-
-  if (isPublicRoute) {
-    return NextResponse.next();
-  }
-
-  // Check for auth cookie set by authStore on login
-  const hasAuth = request.cookies.get('has-auth-token');
-
-  if (!hasAuth) {
-    const loginUrl = new URL('/auth/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
+export function middleware(_request: NextRequest) {
+  // Auth is a Phase 2 feature — all routes are publicly accessible for now
   return NextResponse.next();
 }
 

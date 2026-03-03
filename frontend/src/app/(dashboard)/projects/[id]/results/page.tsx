@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ResultsDataTable } from '@/components/results/ResultsDataTable';
+import { ExportModal } from '@/components/workflow/step5/ExportModal';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
 import { apiClient } from '@/lib/api/client';
 
@@ -32,6 +33,7 @@ export default function ResultsPage() {
   const [variables, setVariables] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -45,36 +47,25 @@ export default function ResultsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
+        const [resultsResponse, variablesResponse, projectResponse] = await Promise.all([
+          apiClient.get(`/api/v1/projects/${projectId}/results`) as Promise<any>,
+          apiClient.get(`/api/v1/projects/${projectId}/variables`) as Promise<any[]>,
+          apiClient.get(`/api/v1/projects/${projectId}`) as Promise<any>,
+        ]);
 
-        if (useMockData) {
-          // Mock data mode
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          setResults([]);
-          setVariables([]);
-        } else {
-          // Real API calls
+        if (resultsResponse?.results) {
+          setResults(resultsResponse.results);
+        }
 
-          // Fetch project results
-          const resultsResponse = await apiClient.get(
-            `/api/v1/projects/${projectId}/results`
-          ) as any;
+        if (Array.isArray(variablesResponse)) {
+          const orderedNames = variablesResponse
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .map((v: any) => v.name);
+          setVariables(orderedNames);
+        }
 
-          if (resultsResponse && resultsResponse.documents) {
-            setResults(resultsResponse.documents);
-
-            // Fetch variables to get correct order
-            const variablesResponse = await apiClient.get(
-              `/api/v1/projects/${projectId}/variables`
-            ) as any[];
-
-            if (variablesResponse && Array.isArray(variablesResponse)) {
-              const orderedNames = variablesResponse
-                .sort((a, b) => (a.order || 0) - (b.order || 0))
-                .map((v: any) => v.name);
-              setVariables(orderedNames);
-            }
-          }
+        if (projectResponse?.name) {
+          setProjectName(projectResponse.name);
         }
       } catch (err) {
         console.error('Failed to load results:', err);
@@ -113,7 +104,9 @@ export default function ResultsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {/* TODO: ExportModal not yet implemented */}
+            {results.length > 0 && (
+              <ExportModal projectId={projectId} projectName={projectName} />
+            )}
             <Button
               variant="outline"
               onClick={() => router.push('/projects')}

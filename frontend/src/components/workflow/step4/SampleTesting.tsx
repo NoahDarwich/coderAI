@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Minus, Plus, Pin, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw } from 'lucide-react';
+import { Minus, Plus, Pin, CheckCircle2, XCircle, AlertCircle, Loader2, ArrowRight, RotateCcw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useCreateJob, useJobStatus, useJobResults } from '@/lib/api/processing';
-import { usePostFeedback, useAddGoldenExample } from '@/lib/api/extraction';
+import { usePostFeedback, useAddGoldenExample, useRefinementPreview, useApplyRefinement, type RefinementAlternative } from '@/lib/api/extraction';
 import type { BackendExtraction } from '@/lib/api/transforms';
 import type { Document } from '@/lib/types/api';
 import type { SchemaVariable } from '@/lib/types/api';
@@ -53,10 +53,14 @@ export function SampleTesting({
     variableName: string;
     documentName: string;
   } | null>(null);
+  const [refinementVariableId, setRefinementVariableId] = useState<string | null>(null);
+  const [refinementAlternatives, setRefinementAlternatives] = useState<RefinementAlternative[]>([]);
 
   // API hooks
   const postFeedback = usePostFeedback();
   const addGoldenExample = useAddGoldenExample();
+  const refinementPreview = useRefinementPreview();
+  const applyRefinement = useApplyRefinement();
 
   // Keep default in sync with document count on first load
   useEffect(() => {
@@ -232,6 +236,47 @@ export function SampleTesting({
 
   const accuracy = calculateAccuracy();
   const hasFeedback = Object.keys(feedback).length > 0;
+
+  // Count incorrect feedback per variable
+  const incorrectByVariable: Record<string, { count: number; name: string }> = {};
+  if (results) {
+    for (const [extractionId, status] of Object.entries(feedback)) {
+      if (status !== 'incorrect') continue;
+      const extraction = results.extractions.find((e) => e.id === extractionId);
+      if (!extraction) continue;
+      const variable = variables.find((v) => v.id === extraction.variable_id);
+      if (!variable) continue;
+      if (!incorrectByVariable[variable.id]) {
+        incorrectByVariable[variable.id] = { count: 0, name: variable.name };
+      }
+      incorrectByVariable[variable.id].count++;
+    }
+  }
+  const variablesWithIssues = Object.entries(incorrectByVariable).filter(([, v]) => v.count > 0);
+
+  const handleGetSuggestions = async (variableId: string) => {
+    setRefinementVariableId(variableId);
+    setRefinementAlternatives([]);
+    try {
+      const alternatives = await refinementPreview.mutateAsync(variableId);
+      setRefinementAlternatives(alternatives);
+    } catch {
+      toast.error('Could not load suggestions', { description: 'Try again after marking more extractions as incorrect.' });
+      setRefinementVariableId(null);
+    }
+  };
+
+  const handleApplyRefinement = async (variableId: string, promptText: string, variableName: string) => {
+    try {
+      await applyRefinement.mutateAsync({ variableId, promptText });
+      toast.success(`Prompt updated for "${variableName}"`, {
+        description: 'Run another sample to see if accuracy improves.',
+      });
+      setRefinementVariableId(null);
+    } catch {
+      toast.error('Failed to apply prompt');
+    }
+  };
 
   // Group extractions by document
   const extractionsByDocument =
@@ -518,6 +563,47 @@ export function SampleTesting({
             </CardContent>
           </Card>
 
+          {/* Refinement Suggestions */}
+          {variablesWithIssues.length > 0 && (
+            <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <CardTitle className="text-base text-amber-900 dark:text-amber-100">
+                    Prompt Refinement Suggestions
+                  </CardTitle>
+                </div>
+                <CardDescription className="text-amber-700 dark:text-amber-300">
+                  The following variables have incorrect extractions. Get AI suggestions to improve their prompts.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {variablesWithIssues.map(([variableId, { count, name }]) => (
+                  <div key={variableId} className="flex items-center justify-between rounded-md border border-amber-200 bg-white dark:bg-amber-950/40 px-3 py-2">
+                    <span className="text-sm font-medium">
+                      {name}
+                      <span className="ml-2 text-xs text-red-600 font-normal">{count} incorrect</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-amber-300 text-amber-800 hover:bg-amber-100"
+                      onClick={() => handleGetSuggestions(variableId)}
+                      disabled={refinementPreview.isPending && refinementVariableId === variableId}
+                    >
+                      {refinementPreview.isPending && refinementVariableId === variableId ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1 h-3 w-3" />
+                      )}
+                      Get AI Suggestions
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <Button variant="outline" onClick={onRefineSchema}>
@@ -541,6 +627,67 @@ export function SampleTesting({
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Refinement Suggestions Dialog */}
+      <AlertDialog
+        open={refinementVariableId !== null}
+        onOpenChange={(open) => { if (!open) setRefinementVariableId(null); }}
+      >
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              AI Prompt Suggestions
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {refinementPreview.isPending
+                ? 'Analysing feedback and generating improved prompts…'
+                : refinementAlternatives.length === 0
+                ? 'No suggestions available. Make sure you have marked at least one extraction as incorrect.'
+                : 'Select an alternative prompt to apply. You can run another sample afterwards to compare accuracy.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {refinementPreview.isPending && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!refinementPreview.isPending && refinementAlternatives.length > 0 && (
+            <div className="space-y-3 my-2 max-h-96 overflow-y-auto pr-1">
+              {refinementAlternatives.map((alt, idx) => (
+                <div key={idx} className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Alternative {idx + 1} · {alt.focus}
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={() => handleApplyRefinement(
+                        refinementVariableId!,
+                        alt.prompt_text,
+                        incorrectByVariable[refinementVariableId!]?.name ?? '',
+                      )}
+                      disabled={applyRefinement.isPending}
+                    >
+                      {applyRefinement.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Apply'}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{alt.explanation}</p>
+                  <pre className="text-xs bg-muted rounded p-3 whitespace-pre-wrap font-mono overflow-x-auto">
+                    {alt.prompt_text}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Pin Example Dialog */}
       <AlertDialog open={pinTarget !== null} onOpenChange={(open) => !open && setPinTarget(null)}>

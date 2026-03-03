@@ -90,7 +90,12 @@ class TextExtractionService:
     """Service for extracting structured data from text using OpenAI API."""
 
     def __init__(self, api_key: Optional[str] = None):
-        self.client = AsyncOpenAI(api_key=api_key or settings.OPENAI_API_KEY)
+        from src.core.mock_llm import is_mock_mode, MockOpenAIClient
+        if is_mock_mode():
+            self.client = MockOpenAIClient()
+            logger.info("[MockLLM] TextExtractionService using mock client (no real API key)")
+        else:
+            self.client = AsyncOpenAI(api_key=api_key or settings.OPENAI_API_KEY)
         self.default_model = "gpt-4o"
         self.default_temperature = 0.1
         self.default_top_p = 0.2

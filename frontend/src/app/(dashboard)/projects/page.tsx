@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, FolderOpen, FileText, Calendar, TrendingUp, Trash2 } from 'lucide-react';
+import { Plus, FolderOpen, FileText, Calendar, TrendingUp, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,80 +17,50 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useProjectStore } from '@/store/projectStore';
-import { Project } from '@/types';
+import { Project } from '@/lib/types/api';
+import { useProjects, useDeleteProject } from '@/lib/api/projects';
 import { formatRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
-  setup: 'Setup',
-  schema: 'Defining Schema',
-  review: 'Reviewing',
+  draft: 'Draft',
+  schema_defined: 'Schema Defined',
+  schema_approved: 'Schema Approved',
+  sample_testing: 'Sample Testing',
+  ready: 'Ready',
   processing: 'Processing',
-  complete: 'Complete',
+  completed: 'Complete',
+  error: 'Error',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  setup: 'bg-blue-100 text-blue-800 border-blue-200',
-  schema: 'bg-purple-100 text-purple-800 border-purple-200',
-  review: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  draft: 'bg-blue-100 text-blue-800 border-blue-200',
+  schema_defined: 'bg-purple-100 text-purple-800 border-purple-200',
+  schema_approved: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  sample_testing: 'bg-orange-100 text-orange-800 border-orange-200',
+  ready: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   processing: 'bg-orange-100 text-orange-800 border-orange-200',
-  complete: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-green-100 text-green-800 border-green-200',
+  error: 'bg-red-100 text-red-800 border-red-200',
 };
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const { projects, removeProject } = useProjectStore();
-  const [isLoading, setIsLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
+  const { data: projects = [], isLoading } = useProjects();
+  const deleteProject = useDeleteProject();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    const loadProjects = async () => {
-      setIsLoading(true);
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        // Projects are already loaded from localStorage via Zustand persist
-        // No need to call setProjects([]) - that would clear them!
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (mounted) {
-      loadProjects();
-    }
-  }, [mounted]);
-
-  if (!mounted) {
-    return null;
-  }
-
-  const handleCreateProject = () => {
-    router.push('/projects/new');
-  };
-
   const handleDeleteClick = (e: React.MouseEvent, project: Project) => {
-    e.preventDefault(); // Prevent navigation
+    e.preventDefault();
     e.stopPropagation();
     setProjectToDelete(project);
     setDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (projectToDelete) {
-      removeProject(projectToDelete.id);
-      setDeleteDialogOpen(false);
-      setProjectToDelete(null);
-    }
-  };
-
-  const handleCancelDelete = () => {
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
+    await deleteProject.mutateAsync(projectToDelete.id);
     setDeleteDialogOpen(false);
     setProjectToDelete(null);
   };
@@ -100,11 +70,9 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
-          <p className="mt-1 text-gray-600">
-            Manage your research extraction projects
-          </p>
+          <p className="mt-1 text-gray-600">Manage your research extraction projects</p>
         </div>
-        <Button onClick={handleCreateProject} size="lg">
+        <Button onClick={() => router.push('/projects/new')} size="lg">
           <Plus className="w-5 h-5 mr-2" />
           New Project
         </Button>
@@ -137,13 +105,11 @@ export default function ProjectsPage() {
                 <FolderOpen className="w-8 h-8 text-gray-400" />
               </div>
             </div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              No projects yet
-            </h2>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">No projects yet</h2>
             <p className="text-gray-600 mb-6 max-w-md mx-auto">
               Create your first project to start extracting structured data from your documents.
             </p>
-            <Button onClick={handleCreateProject} size="lg">
+            <Button onClick={() => router.push('/projects/new')} size="lg">
               <Plus className="w-5 h-5 mr-2" />
               Create Your First Project
             </Button>
@@ -153,7 +119,7 @@ export default function ProjectsPage() {
 
       {!isLoading && projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project: Project) => (
+          {projects.map((project) => (
             <div key={project.id} className="relative group">
               <Link href={`/projects/${project.id}`}>
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
@@ -162,74 +128,78 @@ export default function ProjectsPage() {
                       <CardTitle className="text-xl pr-8">{project.name}</CardTitle>
                       <Badge
                         variant="outline"
-                        className={cn(
-                          'text-xs',
-                          STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-800'
-                        )}
+                        className={cn('text-xs', STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-800')}
                       >
                         {STATUS_LABELS[project.status] || project.status}
                       </Badge>
                     </div>
-                  <CardDescription>
-                    {project.scale === 'small' ? 'Small Project' : 'Large Project'} •
-                    Created {formatRelativeTime(project.createdAt)}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center text-gray-600">
-                        <FileText className="w-4 h-4 mr-1" />
-                        <span>{project.documentCount || 0} documents</span>
-                      </div>
-                      {project.status === 'complete' && (
-                        <div className="flex items-center text-green-600">
-                          <TrendingUp className="w-4 h-4 mr-1" />
-                          <span>Complete</span>
+                    <CardDescription>
+                      {project.scale === 'LARGE' ? 'Large Project' : 'Small Project'} •
+                      Created {formatRelativeTime(project.createdAt)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center text-gray-600">
+                          <FileText className="w-4 h-4 mr-1" />
+                          <span>{project.documentCount || 0} documents</span>
                         </div>
-                      )}
+                        {project.status === 'completed' && (
+                          <div className="flex items-center text-green-600">
+                            <TrendingUp className="w-4 h-4 mr-1" />
+                            <span>Complete</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center text-xs text-gray-500">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        Updated {formatRelativeTime(project.updatedAt)}
+                      </div>
                     </div>
-                    <div className="flex items-center text-xs text-gray-500">
-                      <Calendar className="w-3 h-3 mr-1" />
-                      Updated {formatRelativeTime(project.updatedAt)}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white hover:bg-red-50 hover:text-red-600 z-10"
-              onClick={(e) => handleDeleteClick(e, project)}
-              aria-label={`Delete project ${project.name}`}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white hover:bg-red-50 hover:text-red-600 z-10"
+                onClick={(e) => handleDeleteClick(e, project)}
+                aria-label={`Delete project ${project.name}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Project?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <span className="font-semibold">{projectToDelete?.name}</span>?
-              This action cannot be undone. All project data, including schema definitions and extraction results, will be permanently deleted.
+              Are you sure you want to delete{' '}
+              <span className="font-semibold">{projectToDelete?.name}</span>?
+              This action cannot be undone. All project data, including schema definitions
+              and extraction results, will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelDelete}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteProject.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
+              disabled={deleteProject.isPending}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              Delete Project
+              {deleteProject.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Project'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

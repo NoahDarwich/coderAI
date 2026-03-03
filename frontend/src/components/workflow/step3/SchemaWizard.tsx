@@ -10,6 +10,7 @@ import { CheckCircle2, ListTree } from 'lucide-react';
 import { Variable } from '@/types';
 import { VariableFormData } from '@/lib/validations';
 import { useSchemaWizardStore } from '@/store/schemaWizardStore';
+import { useVariables } from '@/lib/api/schema';
 
 interface SchemaWizardProps {
   projectId: string;
@@ -25,15 +26,27 @@ export function SchemaWizard({ projectId, onComplete }: SchemaWizardProps) {
     setCurrentIndex,
     setProjectId,
     loadDraft,
+    seedFromBackend,
   } = useSchemaWizardStore();
+
+  const { data: backendVariables } = useVariables(projectId);
 
   const [isAddingNew, setIsAddingNew] = useState(variables.length === 0);
 
   useEffect(() => {
-    // Load draft for this project
+    // Load draft for this project (clears store if project changed)
     loadDraft(projectId);
     setProjectId(projectId);
   }, [projectId, loadDraft, setProjectId]);
+
+  // Hydrate the wizard from the backend when the store is empty (e.g. after
+  // navigating back via "Refine Schema") so existing variables are preserved.
+  useEffect(() => {
+    if (backendVariables && backendVariables.length > 0 && variables.length === 0) {
+      seedFromBackend(backendVariables);
+      setIsAddingNew(false);
+    }
+  }, [backendVariables, variables.length, seedFromBackend]);
 
   const handleAddVariable = (data: VariableFormData) => {
     addVariable({

@@ -4,7 +4,7 @@ DocumentChunk model - represents a chunk of a large document.
 from uuid import uuid4
 
 from sqlalchemy import Column, ForeignKey, Integer, Text
-from sqlalchemy.dialects.postgresql import UUID
+from src.models.compat import UUID
 from sqlalchemy.orm import relationship
 
 from src.core.database import Base

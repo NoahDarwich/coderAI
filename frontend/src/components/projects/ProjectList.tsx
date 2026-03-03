@@ -1,32 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useProjectStore } from '@/lib/store/projectStore';
+import { useState } from 'react';
+import { useProjects, useDeleteProject } from '@/lib/api/projects';
 import { ProjectCard } from './ProjectCard';
 import { EmptyState } from './EmptyState';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { Loader2 } from 'lucide-react';
 
 export function ProjectList() {
-  const { projects, isLoading, fetchProjects, deleteProject } = useProjectStore();
+  const { data: projects = [], isLoading } = useProjects();
+  const deleteProjectMutation = useDeleteProject();
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
 
   const handleDelete = async () => {
     if (!deleteProjectId) return;
-
-    setIsDeleting(true);
     try {
-      await deleteProject(deleteProjectId);
+      await deleteProjectMutation.mutateAsync(deleteProjectId);
       setDeleteProjectId(null);
     } catch (error) {
       console.error('Failed to delete project:', error);
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -58,7 +50,7 @@ export function ProjectList() {
         open={!!deleteProjectId}
         onOpenChange={(open) => !open && setDeleteProjectId(null)}
         onConfirm={handleDelete}
-        isDeleting={isDeleting}
+        isDeleting={deleteProjectMutation.isPending}
       />
     </>
   );

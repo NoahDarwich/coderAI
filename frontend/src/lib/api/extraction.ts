@@ -150,6 +150,35 @@ export function usePostFeedback() {
 }
 
 /**
+ * Refinement suggestion from the AI refiner agent
+ */
+export interface RefinementAlternative {
+  prompt_text: string;
+  explanation: string;
+  focus: string;
+}
+
+/**
+ * Get AI-generated prompt refinement suggestions for a variable based on feedback
+ */
+export function useRefinementPreview() {
+  return useMutation({
+    mutationFn: (variableId: string) =>
+      apiClient.post<RefinementAlternative[]>(`/api/v1/variables/${variableId}/refine/preview`),
+  });
+}
+
+/**
+ * Apply a selected prompt text as the new active prompt for a variable
+ */
+export function useApplyRefinement() {
+  return useMutation({
+    mutationFn: ({ variableId, promptText }: { variableId: string; promptText: string }) =>
+      apiClient.put(`/api/v1/variables/${variableId}/prompt`, { prompt_text: promptText }),
+  });
+}
+
+/**
  * Pin a golden (few-shot) example to a variable
  */
 export function useAddGoldenExample() {

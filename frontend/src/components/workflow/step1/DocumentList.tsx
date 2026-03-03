@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Document } from '@/types';
+import { Document } from '@/lib/types/api';
 import { formatFileSize, formatRelativeTime, cn } from '@/lib/utils';
 
 interface DocumentListProps {
@@ -25,26 +25,33 @@ interface DocumentListProps {
   isLoading?: boolean;
 }
 
-const STATUS_COLORS = {
-  uploading: 'bg-blue-100 text-blue-800 border-blue-200',
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-gray-100 text-gray-800 border-gray-200',
   uploaded: 'bg-green-100 text-green-800 border-green-200',
+  parsed: 'bg-blue-100 text-blue-800 border-blue-200',
+  ready: 'bg-green-100 text-green-800 border-green-200',
   processing: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  processed: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-green-100 text-green-800 border-green-200',
+  failed: 'bg-red-100 text-red-800 border-red-200',
   error: 'bg-red-100 text-red-800 border-red-200',
 };
 
-const STATUS_LABELS = {
-  uploading: 'Uploading',
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
   uploaded: 'Uploaded',
+  parsed: 'Parsed',
+  ready: 'Ready',
   processing: 'Processing',
-  processed: 'Processed',
+  completed: 'Completed',
+  failed: 'Failed',
   error: 'Error',
 };
 
-const FILE_TYPE_COLORS = {
+const FILE_TYPE_COLORS: Record<string, string> = {
   pdf: 'bg-red-100 text-red-800',
   docx: 'bg-blue-100 text-blue-800',
   txt: 'bg-gray-100 text-gray-800',
+  html: 'bg-orange-100 text-orange-800',
 };
 
 export function DocumentList({
@@ -138,7 +145,7 @@ export function DocumentList({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {document.fileName}
+                        {document.name}
                       </p>
                       <Badge
                         variant="outline"
@@ -148,15 +155,10 @@ export function DocumentList({
                       </Badge>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span>{formatFileSize(document.fileSize)}</span>
+                      <span>{formatFileSize(document.sizeBytes)}</span>
                       <span>•</span>
                       <span>Uploaded {formatRelativeTime(document.uploadedAt)}</span>
                     </div>
-                    {document.contentPreview && (
-                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">
-                        {document.contentPreview}
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -175,7 +177,7 @@ export function DocumentList({
                         variant="ghost"
                         size="sm"
                         onClick={() => onView(document)}
-                        aria-label={`View ${document.fileName}`}
+                        aria-label={`View ${document.name}`}
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
@@ -185,7 +187,7 @@ export function DocumentList({
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteClick(document)}
-                        aria-label={`Delete ${document.fileName}`}
+                        aria-label={`Delete ${document.name}`}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>

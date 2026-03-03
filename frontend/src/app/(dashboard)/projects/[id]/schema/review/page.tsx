@@ -60,7 +60,7 @@ export default function SchemaReviewPage() {
           </Button>
         </div>
 
-        <WorkflowProgress currentStep={4} />
+        <WorkflowProgress currentStep={3} />
       </div>
 
       <SchemaReview

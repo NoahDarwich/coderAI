@@ -78,14 +78,18 @@ class LLMClient:
         self.base_delay = base_delay
         self.max_delay = max_delay
 
-        # Initialize LangChain ChatOpenAI
-        self.llm = ChatOpenAI(
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            openai_api_key=settings.OPENAI_API_KEY,
-            request_timeout=30.0,
-        )
+        # Initialize LangChain ChatOpenAI (or mock for dev)
+        from src.core.mock_llm import is_mock_mode, MockChatOpenAI
+        if is_mock_mode():
+            self.llm = MockChatOpenAI()
+        else:
+            self.llm = ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                openai_api_key=settings.OPENAI_API_KEY,
+                request_timeout=30.0,
+            )
 
         # Initialize output parser for structured extraction
         self.output_parser = PydanticOutputParser(pydantic_object=ExtractionResult)

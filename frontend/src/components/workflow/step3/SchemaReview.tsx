@@ -78,6 +78,7 @@ export function SchemaReview({ projectId, onConfirm, onBackToWizard }: SchemaRev
         'date': 'DATE',
         'category': 'CATEGORY',
         'boolean': 'BOOLEAN',
+        'location': 'LOCATION',
       };
 
       const schemaVariables: SchemaVariable[] = variables.map((variable) => ({

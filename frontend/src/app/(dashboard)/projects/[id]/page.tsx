@@ -1,39 +1,48 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, Settings, FileText, Play, Download } from 'lucide-react';
+import { ArrowLeft, Upload, Settings, FileText, Play, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { WorkflowProgress } from '@/components/layout/WorkflowProgress';
-import { useProjectStore } from '@/store/projectStore';
-import { useWorkflowStore } from '@/store/workflowStore';
+import { useProject } from '@/lib/api/projects';
+import { useVariables } from '@/lib/api/schema';
 import { formatRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 const STATUS_TO_STEP: Record<string, number> = {
-  setup: 1,
-  schema: 2,
-  review: 3,
+  draft: 1,
+  schema_defined: 2,
+  schema_approved: 3,
+  sample_testing: 4,
+  ready: 4,
   processing: 4,
-  complete: 5,
+  completed: 5,
+  error: 1,
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  setup: 'Setup',
-  schema: 'Defining Schema',
-  review: 'Reviewing',
+  draft: 'Draft',
+  schema_defined: 'Schema Defined',
+  schema_approved: 'Schema Approved',
+  sample_testing: 'Sample Testing',
+  ready: 'Ready',
   processing: 'Processing',
-  complete: 'Complete',
+  completed: 'Complete',
+  error: 'Error',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  setup: 'bg-blue-100 text-blue-800 border-blue-200',
-  schema: 'bg-purple-100 text-purple-800 border-purple-200',
-  review: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  draft: 'bg-blue-100 text-blue-800 border-blue-200',
+  schema_defined: 'bg-purple-100 text-purple-800 border-purple-200',
+  schema_approved: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  sample_testing: 'bg-orange-100 text-orange-800 border-orange-200',
+  ready: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   processing: 'bg-orange-100 text-orange-800 border-orange-200',
-  complete: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-green-100 text-green-800 border-green-200',
+  error: 'bg-red-100 text-red-800 border-red-200',
 };
 
 export default function ProjectOverviewPage() {
@@ -41,37 +50,10 @@ export default function ProjectOverviewPage() {
   const router = useRouter();
   const projectId = params.id as string;
 
-  const projectStore = useProjectStore();
-  const { setStep } = useWorkflowStore();
-  const [hydrated, setHydrated] = useState(false);
+  const { data: project, isLoading, error } = useProject(projectId);
+  const { data: variables } = useVariables(projectId);
 
-  useEffect(() => {
-    // Give Zustand persist middleware time to hydrate from localStorage
-    const timer = setTimeout(() => {
-      setHydrated(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Get project directly from store (only after hydration)
-  const project = hydrated ? projectStore.projects.find((p) => p.id === projectId) : null;
-
-  useEffect(() => {
-    if (hydrated && project) {
-      console.log('Setting workflow step for project:', project.name);
-      setStep(STATUS_TO_STEP[project.status] || 1);
-    }
-  }, [hydrated, project, setStep]);
-
-  useEffect(() => {
-    if (hydrated && !project && projectStore.projects.length > 0) {
-      console.log('Project not found, redirecting to /projects');
-      router.push('/projects');
-    }
-  }, [hydrated, project, projectStore.projects, router]);
-
-  // Show loading while hydrating
-  if (!hydrated) {
+  if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse space-y-6">
@@ -83,22 +65,21 @@ export default function ProjectOverviewPage() {
     );
   }
 
-  // If project not found after hydration, show loading (will redirect)
-  if (!project) {
+  if (error || !project) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/3" />
-          <div className="h-32 bg-gray-200 rounded" />
-          <div className="h-64 bg-gray-200 rounded" />
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+        <Alert variant="destructive">
+          <AlertDescription>Project not found.</AlertDescription>
+        </Alert>
+        <Button variant="ghost" onClick={() => router.push('/projects')}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Projects
+        </Button>
       </div>
     );
   }
 
   const currentStep = STATUS_TO_STEP[project.status] || 1;
-
-  console.log('Rendering project overview page with project:', project.name, 'currentStep:', currentStep);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -114,11 +95,9 @@ export default function ProjectOverviewPage() {
       <div className="mb-8">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {project.name}
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{project.name}</h1>
             <p className="text-gray-600">
-              {project.scale === 'small' ? 'Small Project' : 'Large Project'} •
+              {project.scale === 'LARGE' ? 'Large Project' : 'Small Project'} •
               Created {formatRelativeTime(project.createdAt)}
             </p>
           </div>
@@ -141,7 +120,7 @@ export default function ProjectOverviewPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600">
-              {project.scale === 'small' ? 'Up to 50 documents' : '50+ documents'}
+              {project.scale === 'LARGE' ? '50+ documents' : 'Up to 50 documents'}
             </p>
           </CardContent>
         </Card>
@@ -149,26 +128,20 @@ export default function ProjectOverviewPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Variables Defined</CardDescription>
-            <CardTitle className="text-3xl">0</CardTitle>
+            <CardTitle className="text-3xl">{variables?.length ?? 0}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600">
-              Data fields to extract
-            </p>
+            <p className="text-sm text-gray-600">Data fields to extract</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Progress</CardDescription>
-            <CardTitle className="text-3xl">
-              {Math.round((currentStep / 5) * 100)}%
-            </CardTitle>
+            <CardTitle className="text-3xl">{Math.round((currentStep / 5) * 100)}%</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600">
-              Step {currentStep} of 5 complete
-            </p>
+            <p className="text-sm text-gray-600">Step {currentStep} of 5 complete</p>
           </CardContent>
         </Card>
       </div>
@@ -176,27 +149,18 @@ export default function ProjectOverviewPage() {
       <Card>
         <CardHeader>
           <CardTitle>Next Steps</CardTitle>
-          <CardDescription>
-            What you need to do to progress this project
-          </CardDescription>
+          <CardDescription>What you need to do to progress this project</CardDescription>
         </CardHeader>
         <CardContent>
           {currentStep === 1 && (
             <div className="space-y-4">
-              <p className="text-gray-700">
-                Upload your documents to get started with data extraction.
-              </p>
+              <p className="text-gray-700">Upload your documents to get started with data extraction.</p>
               <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={() => router.push(`/projects/${projectId}/documents`)}
-                >
+                <Button onClick={() => router.push(`/projects/${projectId}/documents`)}>
                   <Upload className="w-4 h-4 mr-2" />
                   Upload Documents
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push(`/projects/${projectId}/schema`)}
-                >
+                <Button variant="outline" onClick={() => router.push(`/projects/${projectId}/schema`)}>
                   <Settings className="w-4 h-4 mr-2" />
                   Define Schema
                 </Button>
@@ -206,12 +170,8 @@ export default function ProjectOverviewPage() {
 
           {currentStep === 2 && (
             <div className="space-y-4">
-              <p className="text-gray-700">
-                Define the variables you want to extract from your documents.
-              </p>
-              <Button
-                onClick={() => router.push(`/projects/${projectId}/schema`)}
-              >
+              <p className="text-gray-700">Define the variables you want to extract from your documents.</p>
+              <Button onClick={() => router.push(`/projects/${projectId}/schema`)}>
                 <Settings className="w-4 h-4 mr-2" />
                 Define Schema
               </Button>
@@ -220,12 +180,8 @@ export default function ProjectOverviewPage() {
 
           {currentStep === 3 && (
             <div className="space-y-4">
-              <p className="text-gray-700">
-                Review your extraction schema before processing.
-              </p>
-              <Button
-                onClick={() => router.push(`/projects/${projectId}/review`)}
-              >
+              <p className="text-gray-700">Review your extraction schema before processing.</p>
+              <Button onClick={() => router.push(`/projects/${projectId}/schema/review`)}>
                 <FileText className="w-4 h-4 mr-2" />
                 Review Schema
               </Button>
@@ -234,29 +190,23 @@ export default function ProjectOverviewPage() {
 
           {currentStep === 4 && (
             <div className="space-y-4">
-              <p className="text-gray-700">
-                Your documents are being processed. This may take a few minutes.
-              </p>
-              <Button disabled>
-                <Play className="w-4 h-4 mr-2 animate-spin" />
-                Processing...
+              <p className="text-gray-700">Run sample testing and full processing on your documents.</p>
+              <Button onClick={() => router.push(`/projects/${projectId}/process`)}>
+                <Play className="w-4 h-4 mr-2" />
+                Go to Processing
               </Button>
             </div>
           )}
 
           {currentStep === 5 && (
             <div className="space-y-4">
-              <p className="text-gray-700">
-                Your project is complete! View results and export your data.
-              </p>
+              <p className="text-gray-700">Your project is complete! View results and export your data.</p>
               <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={() => router.push(`/projects/${projectId}/results`)}
-                >
+                <Button onClick={() => router.push(`/projects/${projectId}/results`)}>
                   <FileText className="w-4 h-4 mr-2" />
                   View Results
                 </Button>
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => router.push(`/projects/${projectId}/results`)}>
                   <Download className="w-4 h-4 mr-2" />
                   Export Data
                 </Button>

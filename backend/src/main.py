@@ -31,6 +31,38 @@ async def lifespan(app: FastAPI):
     from src.core.tracing import setup_tracing
     setup_tracing(app)
 
+    # In DEBUG mode, create all tables from models (bypasses PG-specific migrations)
+    if settings.DEBUG:
+        from src.core.database import Base, _get_engine
+        # Import all models so they register with Base.metadata
+        import src.models.user  # noqa
+        import src.models.project  # noqa
+        import src.models.document  # noqa
+        import src.models.variable  # noqa
+        import src.models.processing_job  # noqa
+        import src.models.extraction  # noqa
+        async with _get_engine().begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created from models (debug mode)")
+
+    # Seed dev user when DEBUG=True (skips auth for local development)
+    if settings.DEBUG:
+        from sqlalchemy import select
+        from src.core.database import AsyncSessionLocal
+        from src.models.user import User
+        from src.core.security import get_password_hash
+        from src.api.dependencies import DEV_USER_EMAIL
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.email == DEV_USER_EMAIL))
+            if not result.scalar_one_or_none():
+                session.add(User(
+                    email=DEV_USER_EMAIL,
+                    hashed_password=get_password_hash("dev"),
+                    is_active=True,
+                ))
+                await session.commit()
+                logger.info("Dev user seeded: %s", DEV_USER_EMAIL)
+
     yield
 
     # Shutdown

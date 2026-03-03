@@ -28,17 +28,6 @@ export default function ProcessPage() {
   const { data: documents = [], isLoading: documentsLoading } = useDocuments(projectId);
   const { data: variables = [], isLoading: variablesLoading } = useVariables(projectId);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('=== PROCESS PAGE DEBUG ===');
-    console.log('Project ID:', projectId);
-    console.log('Variables loading:', variablesLoading);
-    console.log('Variables data:', variables);
-    console.log('Variables count:', variables?.length);
-    console.log('Documents count:', documents?.length);
-    console.log('========================');
-  }, [projectId, variables, variablesLoading, documents]);
-
   useEffect(() => {
     setMounted(true);
   }, []);

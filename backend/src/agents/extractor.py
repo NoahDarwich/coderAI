@@ -28,12 +28,16 @@ class ExtractionAgent:
     """
 
     def __init__(self, api_key: Optional[str] = None):
+        from src.core.mock_llm import is_mock_mode, MockChatOpenAI
         self.service = create_extraction_service(api_key=api_key)
-        self.llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL or "gpt-4",
-            temperature=0.1,
-            api_key=api_key or settings.OPENAI_API_KEY,
-        )
+        if is_mock_mode():
+            self.llm = MockChatOpenAI()
+        else:
+            self.llm = ChatOpenAI(
+                model=settings.OPENAI_MODEL or "gpt-4",
+                temperature=0.1,
+                api_key=api_key or settings.OPENAI_API_KEY,
+            )
 
     async def extract(
         self,

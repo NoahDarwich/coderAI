@@ -29,6 +29,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+DEV_USER_EMAIL = "dev@localhost"
+
+
 async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -36,9 +39,17 @@ async def get_current_user(
     """
     Dependency to get the current authenticated user from JWT token.
 
-    Raises HTTPException 401 if token is missing or invalid.
+    In DEBUG mode with no token, falls back to the seeded dev user so the
+    app is usable without a full auth flow.
     """
+    from src.core.config import settings
+
     if not token:
+        if settings.DEBUG:
+            result = await db.execute(select(User).where(User.email == DEV_USER_EMAIL))
+            dev_user = result.scalar_one_or_none()
+            if dev_user:
+                return dev_user
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",

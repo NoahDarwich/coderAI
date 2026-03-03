@@ -70,11 +70,16 @@ class CopilotAgent:
     """
 
     def __init__(self, redis=None):
-        self.llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL or "gpt-4",
-            temperature=0.7,
-            api_key=settings.OPENAI_API_KEY,
-        )
+        from src.core.mock_llm import is_mock_mode, MockChatOpenAI
+        if is_mock_mode():
+            self.llm = MockChatOpenAI()
+            logger.info("[MockLLM] CopilotAgent using mock LLM (no real API key)")
+        else:
+            self.llm = ChatOpenAI(
+                model=settings.OPENAI_MODEL or "gpt-4",
+                temperature=0.7,
+                api_key=settings.OPENAI_API_KEY,
+            )
         self.redis = redis
 
     async def _load_history(self, project_id: UUID) -> List[Dict[str, str]]:

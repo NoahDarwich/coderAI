@@ -16,7 +16,6 @@ export default function NewProjectPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (data: ProjectFormData) => {
-    console.log('Form submitted with data:', data);
     setError(null);
 
     try {
@@ -27,12 +26,9 @@ export default function NewProjectPage() {
         description: `${data.scale === 'small' ? 'Small-scale' : 'Large-scale'} research project`,
       });
 
-      console.log('Project created successfully:', newProject);
-
       // Navigate to the new project documents page
       router.push(`/projects/${newProject.id}/documents`);
     } catch (err) {
-      console.error('Failed to create project:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Failed to create project: ${errorMessage}`);
     }

@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useProjectStore } from '@/lib/store/projectStore';
+import { useCreateProject } from '@/lib/api/projects';
 import { Loader2 } from 'lucide-react';
 
 const projectSchema = z.object({
@@ -34,8 +33,7 @@ interface NewProjectDialogProps {
 
 export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) {
   const router = useRouter();
-  const createProject = useProjectStore((state) => state.createProject);
-  const [isLoading, setIsLoading] = useState(false);
+  const createProject = useCreateProject();
 
   const {
     register,
@@ -47,16 +45,16 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   });
 
   const onSubmit = async (data: ProjectFormData) => {
-    setIsLoading(true);
     try {
-      const project = await createProject(data.name, data.description);
+      const project = await createProject.mutateAsync({
+        name: data.name,
+        description: data.description,
+      });
       reset();
       onOpenChange(false);
       router.push(`/projects/${project.id}/documents`);
     } catch (error) {
       console.error('Failed to create project:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -78,7 +76,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               id="name"
               placeholder="My Research Project"
               {...register('name')}
-              disabled={isLoading}
+              disabled={createProject.isPending}
             />
             {errors.name && (
               <p className="text-sm text-red-600 dark:text-red-400">
@@ -94,7 +92,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               placeholder="Describe what you want to extract from your documents..."
               rows={4}
               {...register('description')}
-              disabled={isLoading}
+              disabled={createProject.isPending}
             />
             {errors.description && (
               <p className="text-sm text-red-600 dark:text-red-400">
@@ -108,12 +106,12 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={isLoading}
+              disabled={createProject.isPending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
+            <Button type="submit" disabled={createProject.isPending}>
+              {createProject.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating...

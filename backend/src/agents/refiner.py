@@ -41,11 +41,16 @@ class RefinerAgent:
     """
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL or "gpt-4",
-            temperature=0.4,
-            api_key=settings.OPENAI_API_KEY,
-        )
+        from src.core.mock_llm import is_mock_mode, MockChatOpenAI
+        if is_mock_mode():
+            self.llm = MockChatOpenAI()
+            logger.info("[MockLLM] RefinerAgent using mock LLM (no real API key)")
+        else:
+            self.llm = ChatOpenAI(
+                model=settings.OPENAI_MODEL or "gpt-4",
+                temperature=0.4,
+                api_key=settings.OPENAI_API_KEY,
+            )
 
     async def analyze_and_refine(
         self,

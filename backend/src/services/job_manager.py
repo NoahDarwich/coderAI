@@ -61,17 +61,36 @@ class JobManager:
         return job
 
     async def _enqueue_extraction(self, job_id: UUID) -> None:
-        """Enqueue extraction job to ARQ via Redis."""
-        from arq.connections import create_pool
-        from src.workers.settings import parse_redis_url
+        """Enqueue extraction job to ARQ via Redis.
+
+        In DEBUG mode, falls back to an in-process asyncio task when Redis is
+        unreachable so the full pipeline can be tested without a running worker.
+        """
         from src.core.config import settings
 
-        pool = await create_pool(parse_redis_url(settings.REDIS_URL))
         try:
-            await pool.enqueue_job(
-                "process_extraction_job",
-                job_id=str(job_id),
+            from arq.connections import create_pool
+            from src.workers.settings import parse_redis_url
+
+            pool = await create_pool(parse_redis_url(settings.REDIS_URL))
+            try:
+                await pool.enqueue_job(
+                    "process_extraction_job",
+                    job_id=str(job_id),
+                )
+                logger.info(f"Enqueued extraction job {job_id}")
+            finally:
+                await pool.close()
+
+        except Exception as e:
+            if not settings.DEBUG:
+                raise
+            logger.warning(
+                f"Redis unavailable ({e}); running extraction inline (DEBUG mode)"
             )
-            logger.info(f"Enqueued extraction job {job_id}")
-        finally:
-            await pool.close()
+            import asyncio
+            from src.workers.extraction_worker import process_extraction_job
+            from src.core.database import AsyncSessionLocal
+
+            ctx = {"session_factory": AsyncSessionLocal, "redis": None}
+            asyncio.create_task(process_extraction_job(ctx, str(job_id)))

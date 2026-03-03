@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Variable } from '@/types';
+import { Variable, VariableType } from '@/types';
+
+interface ApiVariable {
+  id: string;
+  name: string;
+  type: string;
+  instructions: string;
+  categories?: string[];
+  order?: number;
+}
 
 interface SchemaWizardState {
   variables: Variable[];
@@ -18,6 +27,7 @@ interface SchemaWizardState {
   setCurrentIndex: (index: number) => void;
   saveDraft: () => void;
   loadDraft: (projectId: string) => void;
+  seedFromBackend: (apiVariables: ApiVariable[]) => void;
   clearDraft: () => void;
   reset: () => void;
 }
@@ -97,6 +107,22 @@ export const useSchemaWizardStore = create<SchemaWizardState>()(
           return;
         }
         set({ variables: [], currentVariableIndex: 0, projectId, isDraft: false });
+      },
+
+      seedFromBackend: (apiVariables) => {
+        const typeMap: Record<string, VariableType> = {
+          TEXT: 'text', NUMBER: 'number', DATE: 'date',
+          CATEGORY: 'category', BOOLEAN: 'boolean', LOCATION: 'location',
+        };
+        const variables: Variable[] = apiVariables.map((v, i) => ({
+          id: v.id,
+          name: v.name,
+          type: (typeMap[v.type] ?? 'text') as VariableType,
+          instructions: v.instructions,
+          classificationRules: v.categories,
+          order: v.order ?? i,
+        }));
+        set({ variables, isDraft: false });
       },
 
       clearDraft: () => set({

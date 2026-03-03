@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,117 +16,55 @@ import {
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExtractionResult, Variable, ExportConfig } from '@/types';
-import { downloadBlob } from '@/lib/utils';
+import { apiClient } from '@/lib/api/client';
+
+type ExportFormat = 'CSV_WIDE' | 'CSV_LONG' | 'EXCEL' | 'JSON';
 
 interface ExportModalProps {
-  results: ExtractionResult[];
-  variables: Variable[];
-  documentNames: Record<string, string>;
+  projectId: string;
+  projectName?: string;
 }
 
-export function ExportModal({ results, variables, documentNames }: ExportModalProps) {
+export function ExportModal({ projectId, projectName }: ExportModalProps) {
   const [open, setOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [config, setConfig] = useState<ExportConfig>({
-    format: 'csv',
-    structure: 'wide',
-    includeConfidence: true,
-    includeSourceText: false,
-  });
+  const [format, setFormat] = useState<ExportFormat>('CSV_WIDE');
+  const [includeConfidence, setIncludeConfidence] = useState(true);
+  const [includeSourceText, setIncludeSourceText] = useState(false);
 
-  const generateCSV = () => {
-    if (config.structure === 'wide') {
-      // Wide format: one row per document
-      const headers = ['Document', ...variables.map((v) => v.name)];
-      if (config.includeConfidence) {
-        variables.forEach((v) => headers.push(`${v.name} (Confidence)`));
-      }
-
-      const rows = results.map((result) => {
-        const row: string[] = [documentNames[result.documentId] || 'Unknown'];
-
-        // Add values
-        variables.forEach((variable) => {
-          const value = result.values.find((v) => v.variableId === variable.id);
-          row.push(value?.value !== null && value?.value !== undefined ? String(value.value) : '');
-        });
-
-        // Add confidence scores
-        if (config.includeConfidence) {
-          variables.forEach((variable) => {
-            const value = result.values.find((v) => v.variableId === variable.id);
-            row.push(value?.confidence !== undefined ? String(value.confidence) : '');
-          });
-        }
-
-        return row;
-      });
-
-      const csvContent = [headers, ...rows]
-        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-
-      return csvContent;
-    } else {
-      // Long format: one row per extracted value
-      const headers = ['Document', 'Variable', 'Value'];
-      if (config.includeConfidence) {
-        headers.push('Confidence');
-      }
-      if (config.includeSourceText) {
-        headers.push('Source Text');
-      }
-
-      const rows: string[][] = [];
-
-      results.forEach((result) => {
-        const docName = documentNames[result.documentId] || 'Unknown';
-
-        result.values.forEach((value) => {
-          const variable = variables.find((v) => v.id === value.variableId);
-          if (!variable) return;
-
-          const row = [
-            docName,
-            variable.name,
-            value.value !== null && value.value !== undefined ? String(value.value) : '',
-          ];
-
-          if (config.includeConfidence) {
-            row.push(String(value.confidence || ''));
-          }
-
-          if (config.includeSourceText) {
-            row.push(value.sourceText || '');
-          }
-
-          rows.push(row);
-        });
-      });
-
-      const csvContent = [headers, ...rows]
-        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-
-      return csvContent;
-    }
+  const FORMAT_LABELS: Record<ExportFormat, { label: string; description: string }> = {
+    CSV_WIDE: { label: 'CSV — Wide', description: 'One row per document, one column per variable' },
+    CSV_LONG: { label: 'CSV — Long', description: 'One row per extracted value' },
+    EXCEL: { label: 'Excel (.xlsx)', description: 'Formatted spreadsheet with codebook sheet' },
+    JSON: { label: 'JSON', description: 'Machine-readable structured format' },
   };
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      // Simulate processing time
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Step 1: create export on backend
+      const response = await apiClient.post<{
+        download_url: string;
+        filename: string;
+        size_bytes: number;
+      }>(`/api/v1/projects/${projectId}/export`, {
+        format,
+        include_confidence: includeConfidence,
+        include_source_text: includeSourceText,
+      });
 
-      const csvContent = generateCSV();
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const fileName = `extraction_results_${new Date().toISOString().split('T')[0]}.csv`;
+      // Step 2: download the generated file
+      await apiClient.download(response.download_url, response.filename);
 
-      downloadBlob(blob, fileName);
+      toast.success('Export ready', {
+        description: `${response.filename} downloaded (${Math.round(response.size_bytes / 1024)} KB)`,
+      });
       setOpen(false);
     } catch (error) {
       console.error('Export failed:', error);
+      toast.error('Export failed', {
+        description: error instanceof Error ? error.message : 'Please try again.',
+      });
     } finally {
       setIsExporting(false);
     }
@@ -143,7 +82,7 @@ export function ExportModal({ results, variables, documentNames }: ExportModalPr
         <DialogHeader>
           <DialogTitle>Export Results</DialogTitle>
           <DialogDescription>
-            Configure export settings and download your extracted data
+            {projectName ? `Export extraction results for "${projectName}"` : 'Configure and download your extracted data'}
           </DialogDescription>
         </DialogHeader>
 
@@ -152,56 +91,31 @@ export function ExportModal({ results, variables, documentNames }: ExportModalPr
           <div className="space-y-3">
             <Label>Export Format</Label>
             <RadioGroup
-              value={config.format}
-              onValueChange={(value) => setConfig({ ...config, format: value as 'csv' })}
+              value={format}
+              onValueChange={(v) => setFormat(v as ExportFormat)}
+              className="space-y-2"
             >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="csv" id="csv" />
-                <Label htmlFor="csv" className="font-normal cursor-pointer">
-                  CSV (Comma-Separated Values)
-                </Label>
-              </div>
-            </RadioGroup>
-            <p className="text-xs text-gray-500">
-              Excel, Google Sheets, and most data tools support CSV
-            </p>
-          </div>
-
-          {/* Structure Selection */}
-          <div className="space-y-3">
-            <Label>Data Structure</Label>
-            <RadioGroup
-              value={config.structure}
-              onValueChange={(value) =>
-                setConfig({ ...config, structure: value as 'wide' | 'long' })
-              }
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="wide" id="wide" />
-                <Label htmlFor="wide" className="font-normal cursor-pointer">
-                  Wide (one row per document)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="long" id="long" />
-                <Label htmlFor="long" className="font-normal cursor-pointer">
-                  Long (one row per value)
-                </Label>
-              </div>
+              {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((f) => (
+                <div key={f} className="flex items-start space-x-2">
+                  <RadioGroupItem value={f} id={f} className="mt-0.5" />
+                  <Label htmlFor={f} className="font-normal cursor-pointer space-y-0.5">
+                    <span className="font-medium">{FORMAT_LABELS[f].label}</span>
+                    <p className="text-xs text-muted-foreground">{FORMAT_LABELS[f].description}</p>
+                  </Label>
+                </div>
+              ))}
             </RadioGroup>
           </div>
 
           {/* Options */}
           <div className="space-y-3">
-            <Label>Include Additional Data</Label>
+            <Label>Include Additional Columns</Label>
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="confidence"
-                  checked={config.includeConfidence}
-                  onCheckedChange={(checked) =>
-                    setConfig({ ...config, includeConfidence: checked as boolean })
-                  }
+                  checked={includeConfidence}
+                  onCheckedChange={(checked) => setIncludeConfidence(checked as boolean)}
                 />
                 <Label htmlFor="confidence" className="font-normal cursor-pointer">
                   Confidence scores
@@ -210,10 +124,8 @@ export function ExportModal({ results, variables, documentNames }: ExportModalPr
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="sourceText"
-                  checked={config.includeSourceText}
-                  onCheckedChange={(checked) =>
-                    setConfig({ ...config, includeSourceText: checked as boolean })
-                  }
+                  checked={includeSourceText}
+                  onCheckedChange={(checked) => setIncludeSourceText(checked as boolean)}
                 />
                 <Label htmlFor="sourceText" className="font-normal cursor-pointer">
                   Source text excerpts
@@ -224,19 +136,19 @@ export function ExportModal({ results, variables, documentNames }: ExportModalPr
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isExporting}>
             Cancel
           </Button>
           <Button onClick={handleExport} disabled={isExporting}>
             {isExporting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Exporting...
+                Generating…
               </>
             ) : (
               <>
                 <Download className="w-4 h-4 mr-2" />
-                Export
+                Download
               </>
             )}
           </Button>
